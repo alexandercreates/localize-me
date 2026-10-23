@@ -1,5 +1,5 @@
 {
-  "name": "localize-me",
+  "name": "@alexandercreates/localize-me",
   "version": "0.1.0",
   "description": "Schlanke Übersetzungsverwaltung für iOS- und Android-Apps: Keys anlegen, übersetzen, als CSV exportieren.",
   "type": "module",
@@ -15,6 +15,9 @@
     "dev": "node bin/cli.js dev --file example/localize.json",
     "test": "node --test",
     "postinstall": "node bin/postinstall.js"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "engines": {
     "node": ">=18.18"

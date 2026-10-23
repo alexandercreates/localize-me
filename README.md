@@ -6,7 +6,7 @@ Schlanke Übersetzungsverwaltung für iOS- und Android-Apps. Keys anlegen, Texte
 
 ```bash
 mkdir texte && cd texte
-npm i localize-me
+npm i @alexandercreates/localize-me
 npm run dev
 ```
 
@@ -23,7 +23,9 @@ Bestehende Skripte werden nie überschrieben. Falls dein Paketmanager Install-Sk
 npx localize-me init
 ```
 
-Oder starte ohne Skript direkt mit `npx localize-me`.
+Oder starte ohne Installation direkt mit `npx @alexandercreates/localize-me`.
+
+Der Befehl selbst heißt kurz `localize-me`, sobald das Paket im Projekt installiert ist.
 
 ## Platzhalter
 

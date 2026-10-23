@@ -20,7 +20,7 @@ export function addScripts(dir, { create = false } = {}) {
 
   const raw = fs.readFileSync(file, "utf8");
   const pkg = JSON.parse(raw);
-  if (pkg.name === "localize-me") return { added: false, reason: "self" };
+  if (pkg.name === "localize-me" || pkg.name === "@alexandercreates/localize-me") return { added: false, reason: "self" };
 
   const scripts = pkg.scripts || {};
   const existing = Object.entries(scripts).find(([, cmd]) => typeof cmd === "string" && /(^|\s)localize-me(\s|$)/.test(cmd));
