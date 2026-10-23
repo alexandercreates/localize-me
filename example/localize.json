@@ -1,0 +1,29 @@
+{
+  "base": "de",
+  "languages": [
+    {
+      "code": "de",
+      "name": "Deutsch"
+    },
+    {
+      "code": "en",
+      "name": "Englisch"
+    }
+  ],
+  "keys": {
+    "button.save": {
+      "de": "Speichern"
+    },
+    "home.greeting": {
+      "de": "Hallo #name, schön dich zu sehen.",
+      "en": "Hi #name, nice to see you."
+    },
+    "list.count": {
+      "de": "#count:int Einträge für #name"
+    },
+    "onboarding.title": {
+      "de": "Willkommen!",
+      "en": "Welcome!"
+    }
+  }
+}

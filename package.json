@@ -1,0 +1,41 @@
+{
+  "name": "localize-me",
+  "version": "0.1.0",
+  "description": "Schlanke Übersetzungsverwaltung für iOS- und Android-Apps: Keys anlegen, übersetzen, als CSV exportieren.",
+  "type": "module",
+  "bin": {
+    "localize-me": "bin/cli.js"
+  },
+  "files": [
+    "bin",
+    "src",
+    "ui"
+  ],
+  "scripts": {
+    "dev": "node bin/cli.js dev --file example/localize.json",
+    "test": "node --test",
+    "postinstall": "node bin/postinstall.js"
+  },
+  "engines": {
+    "node": ">=18.18"
+  },
+  "keywords": [
+    "localization",
+    "i18n",
+    "translation",
+    "ios",
+    "android",
+    "csv",
+    "strings"
+  ],
+  "author": "alexandercreates",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/alexandercreates/localize-me.git"
+  },
+  "bugs": {
+    "url": "https://github.com/alexandercreates/localize-me/issues"
+  },
+  "homepage": "https://github.com/alexandercreates/localize-me#readme"
+}

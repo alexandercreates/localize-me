@@ -1,0 +1,503 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>localize-me</title>
+<style>
+/* Layout: eine Arbeitsspalte – Kopfzeile mit Fortschritt, Werkzeugleiste, Eingabezeile für neue Keys, dann die Tabelle Key | Basis | Ziel */
+:root {
+  --bg: #f5f6f4;
+  --surface: #ffffff;
+  --fg: #1b2420;
+  --muted: #5d6a64;
+  --line: #dde2de;
+  --accent: #116b57;
+  --accent-ink: #ffffff;
+  --accent-soft: #e2f0eb;
+  --missing: #a35a00;
+  --missing-soft: #fbf0e0;
+  --danger: #b3261e;
+  --font-body: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --r: 6px;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #121715; --surface: #1a201d; --fg: #e4ebe7; --muted: #94a39c; --line: #2c3531;
+    --accent: #4fc4a5; --accent-ink: #08201a; --accent-soft: #1d3a32;
+    --missing: #f0b25c; --missing-soft: #3a2c17; --danger: #ff8a80;
+    color-scheme: dark;
+  }
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body {
+  margin: 0; background: var(--bg); color: var(--fg); font-family: var(--font-body); font-size: 15px; line-height: 1.45;
+  padding: 28px max(16px, env(safe-area-inset-right, 0px)) 48px max(16px, env(safe-area-inset-left, 0px));
+}
+.wrap { max-width: 1080px; margin: 0 auto; display: flex; flex-direction: column; gap: 18px; }
+header { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px 24px; }
+h1 { font-size: 28px; font-weight: 700; letter-spacing: -0.02em; margin: 0; }
+.sub { color: var(--muted); margin: 2px 0 0; font-size: 14px; }
+.sub code { font-family: var(--font-mono); font-size: 12px; }
+.progress { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; min-width: 200px; }
+.progress-label { font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.progress-label b { color: var(--fg); font-weight: 600; }
+.bar { width: 200px; max-width: 100%; height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; }
+.bar > i { display: block; height: 100%; background: var(--accent); width: 0; transition: width .3s; }
+
+.toolbar { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: end; padding: 14px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); }
+.field { display: flex; flex-direction: column; gap: 4px; }
+.field > span { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); font-weight: 600; }
+.grow { flex: 1 1 180px; min-width: 0; }
+select, input[type="text"], input[type="search"], textarea {
+  font: inherit; color: var(--fg); background: var(--bg); border: 1px solid var(--line); border-radius: var(--r);
+  padding: 7px 10px; min-height: 36px; width: 100%;
+}
+select { width: auto; min-width: 140px; }
+input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+button {
+  font: inherit; font-weight: 600; cursor: pointer; min-height: 36px; padding: 7px 14px; border-radius: var(--r);
+  border: 1px solid var(--line); background: var(--surface); color: var(--fg);
+}
+button:hover { border-color: var(--muted); }
+button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+button.primary:hover { filter: brightness(1.08); }
+button:disabled { opacity: .5; cursor: not-allowed; }
+.ghost-danger { font-weight: 500; color: var(--muted); }
+.ghost-danger:hover, .ghost-danger.confirm { color: var(--danger); border-color: var(--danger); }
+.check { display: flex; align-items: center; gap: 8px; min-height: 36px; font-size: 14px; cursor: pointer; user-select: none; }
+.check input { width: 16px; height: 16px; accent-color: var(--accent); }
+.spacer { flex: 1 1 0; }
+
+.addlang { display: flex; flex-wrap: wrap; gap: 8px; align-items: end; padding: 12px 14px; background: var(--accent-soft); border-radius: var(--r); }
+.addlang input { width: 110px; }
+.addlang input#langName { width: 160px; }
+
+.newkey { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr) auto; gap: 8px; align-items: end; }
+#newKey { font-family: var(--font-mono); font-size: 13px; }
+.hint { font-size: 13px; color: var(--muted); margin: -6px 0 0; }
+.hint code, .empty-state code { font-family: var(--font-mono); font-size: 12px; background: var(--accent-soft); color: var(--fg); padding: 1px 5px; border-radius: 4px; }
+.msg { font-size: 13px; min-height: 18px; color: var(--muted); }
+.msg.err { color: var(--danger); }
+.msg.ok { color: var(--accent); }
+
+.tablewrap { overflow-x: auto; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); }
+table { width: 100%; border-collapse: collapse; min-width: 640px; }
+th { text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); font-weight: 600; padding: 10px 12px; border-bottom: 1px solid var(--line); background: var(--surface); }
+th .lc { font-family: var(--font-mono); text-transform: none; letter-spacing: 0; color: var(--fg); font-weight: 500; margin-left: 4px; }
+td { padding: 6px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+tr:last-child td { border-bottom: 0; }
+td.k { width: 30%; }
+td.k input { font-family: var(--font-mono); font-size: 12.5px; background: transparent; border-color: transparent; padding: 7px 8px; }
+td.k input:hover { border-color: var(--line); }
+td.k input:focus { background: var(--bg); border-color: var(--line); }
+td textarea { resize: vertical; min-height: 36px; background: transparent; border-color: transparent; padding: 7px 8px; font-size: 14px; field-sizing: content; }
+td textarea:hover { border-color: var(--line); }
+td textarea:focus { background: var(--bg); border-color: var(--line); }
+td.t textarea.empty { background: var(--missing-soft); }
+.flag { margin: 4px 8px 0; font-size: 12px; color: var(--missing); }
+td.act { width: 1%; white-space: nowrap; padding-top: 9px; text-align: right; }
+.iconbtn { min-height: 30px; padding: 4px 9px; font-size: 13px; font-weight: 500; color: var(--muted); background: transparent; border-color: transparent; }
+.iconbtn:hover { color: var(--danger); border-color: var(--line); }
+.iconbtn.confirm { color: var(--danger); border-color: var(--danger); }
+.phinfo { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 2px 8px; margin: 4px 8px 2px; font-family: var(--font-mono); font-size: 11.5px; line-height: 1.5; }
+.phinfo .pl { color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; padding-top: 1px; }
+.phinfo .pv { color: var(--fg); word-break: break-word; }
+.phinfo .warn { grid-column: 1 / -1; color: var(--missing); font-family: var(--font-body); font-size: 12px; }
+
+.empty-state { padding: 40px 20px; text-align: center; color: var(--muted); }
+.empty-state strong { display: block; color: var(--fg); font-size: 16px; margin-bottom: 4px; }
+.status { font-size: 13px; color: var(--muted); }
+.status.warn { color: var(--danger); }
+
+@media (max-width: 640px) {
+  .newkey { grid-template-columns: 1fr; }
+  .progress { align-items: flex-start; }
+  h1 { font-size: 24px; }
+}
+@media (prefers-reduced-motion: reduce) { .bar > i { transition: none; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1>localize-me</h1>
+      <p class="sub" id="fileInfo">Keys anlegen, Texte übersetzen, als CSV mitnehmen.</p>
+    </div>
+    <div class="progress">
+      <div class="progress-label" id="progressLabel">Lade …</div>
+      <div class="bar"><i id="progressBar"></i></div>
+    </div>
+  </header>
+
+  <div class="toolbar">
+    <label class="field">
+      <span>Basissprache</span>
+      <select id="baseSel"></select>
+    </label>
+    <label class="field">
+      <span>Zielsprache</span>
+      <select id="targetSel"></select>
+    </label>
+    <button id="removeLangBtn" type="button" class="ghost-danger">Zielsprache entfernen</button>
+    <button id="addLangBtn" type="button">+ Sprache</button>
+    <label class="field grow">
+      <span>Suchen</span>
+      <input id="search" type="search" placeholder="Key oder Text">
+    </label>
+    <label class="check"><input id="onlyMissing" type="checkbox"> Nur fehlende</label>
+  </div>
+
+  <form class="addlang" id="addLangForm" hidden>
+    <label class="field"><span>Code</span><input id="langCode" type="text" placeholder="z. B. en" autocomplete="off"></label>
+    <label class="field"><span>Name</span><input id="langName" type="text" placeholder="z. B. Englisch" autocomplete="off"></label>
+    <button class="primary" type="submit">Sprache anlegen</button>
+    <button type="button" id="addLangCancel">Abbrechen</button>
+  </form>
+
+  <form class="newkey" id="newKeyForm">
+    <label class="field"><span>Neuer Key</span><input id="newKey" type="text" placeholder="onboarding.title" autocomplete="off" spellcheck="false"></label>
+    <label class="field"><span id="newValLabel">Text (Basis)</span><input id="newVal" type="text" placeholder="Willkommen!" autocomplete="off"></label>
+    <button class="primary" type="submit">Key anlegen</button>
+  </form>
+  <p class="hint">Platzhalter: <code>#name</code> für Text, <code>#anzahl:int</code> für ganze Zahlen, <code>#preis:float</code> für Kommazahlen, <code>##</code> für ein echtes #. Beim Export werden sie für iOS oder Android umgewandelt.</p>
+  <div class="msg" id="msg" role="status"></div>
+
+  <div class="tablewrap">
+    <table>
+      <thead><tr id="headRow"></tr></thead>
+      <tbody id="rows"></tbody>
+    </table>
+    <div class="empty-state" id="empty" hidden></div>
+  </div>
+
+  <div class="toolbar">
+    <label class="field">
+      <span>Trennzeichen</span>
+      <select id="delim">
+        <option value=";">Semikolon (Excel DE)</option>
+        <option value=",">Komma</option>
+      </select>
+    </label>
+    <label class="field">
+      <span>Plattform</span>
+      <select id="platform">
+        <option value="ios">iOS (%@, %lld)</option>
+        <option value="android">Android (%s, %d)</option>
+        <option value="raw">Neutral (#name)</option>
+      </select>
+    </label>
+    <label class="field">
+      <span>Spalten</span>
+      <select id="scope">
+        <option value="pair">Key, Basis, Ziel</option>
+        <option value="all">Key + alle Sprachen</option>
+      </select>
+    </label>
+    <div class="spacer"></div>
+    <button class="primary" id="exportBtn" type="button">CSV exportieren</button>
+  </div>
+  <div class="status" id="status"></div>
+</div>
+
+<script type="module">
+import { convert, parse, check } from "/placeholders.js";
+
+const $ = (id) => document.getElementById(id);
+const state = { project: null, target: "" };
+const rowEls = new Map(); // key -> row
+
+const store = (k, v) => { try { localStorage.setItem(k, v); } catch {} };
+const load = (k) => { try { return localStorage.getItem(k); } catch { return null; } };
+
+function setMsg(text, kind) { const m = $("msg"); m.textContent = text || ""; m.className = "msg" + (kind ? " " + kind : ""); }
+function setStatus(text, warn) { const s = $("status"); s.textContent = text; s.className = "status" + (warn ? " warn" : ""); }
+const langName = (code) => state.project?.languages.find((l) => l.code === code)?.name || code;
+const escapeHtml = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+
+/* ---------- API ---------- */
+async function api(method, url, body) {
+  const res = await fetch(url, {
+    method,
+    headers: body ? { "Content-Type": "application/json" } : {},
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || `Anfrage fehlgeschlagen (${res.status}).`);
+  return data;
+}
+async function mutate(method, url, body) {
+  try {
+    state.project = await api(method, url, body);
+    setStatus("Gespeichert in " + shortFile(), false);
+    renderAll();
+    return true;
+  } catch (e) {
+    if (e instanceof TypeError) setStatus("Keine Verbindung zum Server. Läuft npm run dev noch?", true);
+    else setMsg(e.message, "err");
+    return false;
+  }
+}
+async function refresh() {
+  try {
+    state.project = await api("GET", "/api/project");
+    renderAll();
+    setStatus("Gespeichert in " + shortFile(), false);
+  } catch {
+    setStatus("Keine Verbindung zum Server. Läuft npm run dev noch?", true);
+  }
+}
+function shortFile() { return (state.project?.file || "").split(/[\\/]/).slice(-2).join("/"); }
+
+/* ---------- Rendering ---------- */
+function renderAll() { renderLangSelects(); render(); }
+
+function renderLangSelects() {
+  const { languages, base } = state.project;
+  $("fileInfo").innerHTML = "Texte in <code>" + escapeHtml(state.project.file) + "</code>";
+  $("baseSel").innerHTML = "";
+  for (const l of languages) $("baseSel").add(new Option(`${l.name} (${l.code})`, l.code, false, l.code === base));
+  const others = languages.filter((l) => l.code !== base);
+  if (!others.some((l) => l.code === state.target)) state.target = others[0]?.code || "";
+  $("targetSel").innerHTML = "";
+  if (!others.length) {
+    $("targetSel").add(new Option("– noch keine –", ""));
+    $("targetSel").disabled = true;
+  } else {
+    $("targetSel").disabled = false;
+    for (const l of others) $("targetSel").add(new Option(`${l.name} (${l.code})`, l.code, false, l.code === state.target));
+  }
+  $("newValLabel").textContent = `Text (${langName(base)})`;
+  const head = $("headRow");
+  head.innerHTML = "";
+  const cols = [["Key", ""], [langName(base), base]];
+  if (state.target) cols.push([langName(state.target), state.target]);
+  for (const [label, code] of cols) {
+    const th = document.createElement("th"); th.textContent = label;
+    if (code) { const s = document.createElement("span"); s.className = "lc"; s.textContent = code; th.appendChild(s); }
+    head.appendChild(th);
+  }
+  head.appendChild(document.createElement("th"));
+  $("onlyMissing").disabled = !state.target;
+  $("removeLangBtn").hidden = !state.target;
+  $("scope").disabled = !state.target;
+  disarmRemove();
+}
+
+function autoBlurOnEnter(el) {
+  el.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); el.blur(); } });
+}
+
+function makeRow(key) {
+  const tr = document.createElement("tr");
+  const tdK = document.createElement("td"); tdK.className = "k";
+  const name = document.createElement("input"); name.type = "text"; name.spellcheck = false; name.setAttribute("aria-label", "Key");
+  tdK.appendChild(name);
+  const tdB = document.createElement("td");
+  const base = document.createElement("textarea"); base.rows = 1; base.setAttribute("aria-label", "Basistext");
+  const bInfo = document.createElement("div"); bInfo.className = "phinfo"; bInfo.hidden = true;
+  tdB.append(base, bInfo);
+  const tdT = document.createElement("td"); tdT.className = "t";
+  const target = document.createElement("textarea"); target.rows = 1; target.setAttribute("aria-label", "Übersetzung");
+  const flag = document.createElement("div"); flag.className = "flag"; flag.hidden = true;
+  const tInfo = document.createElement("div"); tInfo.className = "phinfo"; tInfo.hidden = true;
+  tdT.append(target, flag, tInfo);
+  const tdA = document.createElement("td"); tdA.className = "act";
+  const del = document.createElement("button"); del.type = "button"; del.className = "iconbtn"; del.textContent = "Löschen";
+  tdA.appendChild(del);
+  tr.append(tdK, tdB, tdT, tdA);
+
+  const row = { key, tr, name, base, target, tdT, flag, bInfo, tInfo, del, armed: null };
+  const enc = () => "/api/keys/" + encodeURIComponent(row.key);
+
+  name.addEventListener("change", async () => {
+    const next = name.value.trim();
+    if (next === row.key) return;
+    if (!(await mutate("PATCH", enc(), { rename: next }))) name.value = row.key;
+    else setMsg(`Umbenannt in „${next}“.`, "ok");
+  });
+  base.addEventListener("change", () => mutate("PATCH", enc(), { lang: state.project.base, value: base.value }));
+  target.addEventListener("change", () => { if (state.target) mutate("PATCH", enc(), { lang: state.target, value: target.value }); });
+  base.addEventListener("input", () => updateFlag(row));
+  target.addEventListener("input", () => updateFlag(row));
+  [name, base, target].forEach(autoBlurOnEnter);
+  del.addEventListener("click", () => {
+    if (!row.armed) {
+      del.textContent = "Wirklich?"; del.classList.add("confirm");
+      row.armed = setTimeout(() => { row.armed = null; del.textContent = "Löschen"; del.classList.remove("confirm"); }, 3000);
+      return;
+    }
+    clearTimeout(row.armed); row.armed = null;
+    mutate("DELETE", enc());
+  });
+  return row;
+}
+
+function renderInfo(el, text, baseText, warn) {
+  el.innerHTML = "";
+  const has = parse(text).length > 0 || /##/.test(text);
+  if (!has && !warn) { el.hidden = true; return; }
+  if (has) {
+    for (const [label, platform] of [["iOS", "ios"], ["Android", "android"]]) {
+      const l = document.createElement("span"); l.className = "pl"; l.textContent = label;
+      const v = document.createElement("span"); v.className = "pv"; v.textContent = convert(text, platform, baseText);
+      el.append(l, v);
+    }
+  }
+  if (warn) { const w = document.createElement("span"); w.className = "warn"; w.textContent = warn; el.appendChild(w); }
+  el.hidden = false;
+}
+
+function updateFlag(row) {
+  const b = row.base.value, t = row.target.value;
+  const baseProblems = check(b, "");
+  renderInfo(row.bInfo, b, b, baseProblems.join(" · "));
+  if (!state.target) { row.flag.hidden = true; row.tInfo.hidden = true; return; }
+  row.target.classList.toggle("empty", !t.trim());
+  if (!t.trim()) { row.flag.hidden = true; row.tInfo.hidden = true; return; }
+  const problems = check(b, t).filter((p) => !baseProblems.includes(p));
+  row.flag.textContent = problems.join(" · ");
+  row.flag.hidden = !problems.length;
+  renderInfo(row.tInfo, t, b, "");
+}
+
+const setIfIdle = (el, v) => { if (document.activeElement !== el && el.value !== v) el.value = v; };
+
+function render() {
+  const { base, keys } = state.project;
+  const tgt = state.target;
+  const q = $("search").value.trim().toLowerCase();
+  const onlyMissing = $("onlyMissing").checked && !!tgt;
+  const names = Object.keys(keys).sort((a, b) => a.localeCompare(b));
+  const visible = [];
+
+  for (const key of names) {
+    const v = keys[key];
+    let match = !q || key.toLowerCase().includes(q) || (v[base] || "").toLowerCase().includes(q) || (tgt && (v[tgt] || "").toLowerCase().includes(q));
+    if (onlyMissing && (v[tgt] || "").trim()) match = false;
+    let row = rowEls.get(key);
+    if (!row) { row = makeRow(key); rowEls.set(key, row); }
+    setIfIdle(row.name, key);
+    setIfIdle(row.base, v[base] || "");
+    row.tdT.hidden = !tgt;
+    if (tgt) { setIfIdle(row.target, v[tgt] || ""); row.target.placeholder = "Übersetzung fehlt"; }
+    updateFlag(row);
+    if (match) visible.push(row);
+  }
+  for (const [key, row] of rowEls) if (!(key in keys)) { row.tr.remove(); rowEls.delete(key); }
+
+  const tbody = $("rows");
+  const current = [...tbody.children];
+  const same = current.length === visible.length && visible.every((r, i) => current[i] === r.tr);
+  if (!same) {
+    for (const tr of current) if (!visible.some((r) => r.tr === tr)) tr.remove();
+    visible.forEach((r, i) => { if (tbody.children[i] !== r.tr) tbody.insertBefore(r.tr, tbody.children[i] || null); });
+  }
+
+  const empty = $("empty");
+  if (!names.length) {
+    empty.innerHTML = "<strong>Noch keine Keys</strong>Lege oben deinen ersten Key an, zum Beispiel <code>onboarding.title</code>, und gib den Text in der Basissprache ein.";
+    empty.hidden = false;
+  } else if (!visible.length) {
+    empty.innerHTML = onlyMissing && !q
+      ? `<strong>Alles übersetzt</strong>Für ${escapeHtml(langName(tgt))} fehlt kein einziger Text.`
+      : "<strong>Keine Treffer</strong>Passe die Suche oder den Filter an.";
+    empty.hidden = false;
+  } else empty.hidden = true;
+
+  if (tgt && names.length) {
+    const done = names.filter((k) => (keys[k][tgt] || "").trim()).length;
+    $("progressLabel").innerHTML = `<b>${done} / ${names.length}</b> übersetzt nach ${escapeHtml(langName(tgt))}`;
+    $("progressBar").style.width = Math.round((done / names.length) * 100) + "%";
+  } else {
+    $("progressLabel").textContent = `${names.length} Keys` + (tgt ? "" : " · nur Basissprache");
+    $("progressBar").style.width = "0";
+  }
+  $("exportBtn").disabled = !names.length;
+}
+
+/* ---------- Aktionen ---------- */
+$("newKeyForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const key = $("newKey").value.trim();
+  const values = { [state.project.base]: $("newVal").value };
+  if (await mutate("POST", "/api/keys", { key, values })) {
+    $("newKey").value = ""; $("newVal").value = "";
+    setMsg(`„${key}“ angelegt.`, "ok");
+    $("newKey").focus();
+  }
+});
+
+$("addLangBtn").addEventListener("click", () => { $("addLangForm").hidden = false; $("langCode").focus(); });
+$("addLangCancel").addEventListener("click", () => { $("addLangForm").hidden = true; });
+$("addLangForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const code = $("langCode").value.trim();
+  const name = $("langName").value.trim();
+  if (await mutate("POST", "/api/languages", { code, name })) {
+    state.target = code; store("lm.target", code);
+    renderAll();
+    $("langCode").value = ""; $("langName").value = ""; $("addLangForm").hidden = true;
+    setMsg(`${name || code} angelegt und als Zielsprache gewählt.`, "ok");
+  }
+});
+
+let removeArmed = null;
+function disarmRemove() {
+  if (removeArmed) { clearTimeout(removeArmed); removeArmed = null; }
+  const b = $("removeLangBtn"); b.classList.remove("confirm"); b.textContent = "Zielsprache entfernen";
+}
+$("removeLangBtn").addEventListener("click", async () => {
+  const code = state.target;
+  if (!code) return;
+  const b = $("removeLangBtn");
+  if (!removeArmed) {
+    b.classList.add("confirm"); b.textContent = `${langName(code)} wirklich entfernen?`;
+    removeArmed = setTimeout(disarmRemove, 4000);
+    return;
+  }
+  const name = langName(code);
+  disarmRemove();
+  if (await mutate("DELETE", "/api/languages/" + encodeURIComponent(code))) {
+    $("onlyMissing").checked = false;
+    render();
+    setMsg(`${name} entfernt. Die Übersetzungen bleiben in der Datei und tauchen wieder auf, wenn du ${code} erneut anlegst.`, "ok");
+  }
+});
+
+$("baseSel").addEventListener("change", () => mutate("PUT", "/api/base", { code: $("baseSel").value }));
+$("targetSel").addEventListener("change", () => { state.target = $("targetSel").value; store("lm.target", state.target); renderAll(); });
+$("search").addEventListener("input", render);
+$("onlyMissing").addEventListener("change", render);
+
+for (const id of ["delim", "platform", "scope"]) {
+  const saved = load("lm." + id);
+  if (saved) $(id).value = saved;
+  $(id).addEventListener("change", () => store("lm." + id, $(id).value));
+}
+
+$("exportBtn").addEventListener("click", () => {
+  const { base } = state.project;
+  const params = new URLSearchParams({ platform: $("platform").value, delimiter: $("delim").value });
+  if ($("scope").value === "pair" || !state.target) params.set("langs", [base, state.target].filter(Boolean).join(","));
+  const a = document.createElement("a");
+  a.href = "/api/export?" + params;
+  a.download = "";
+  document.body.appendChild(a); a.click(); a.remove();
+  setMsg("CSV wird heruntergeladen.", "ok");
+});
+
+/* ---------- Start ---------- */
+state.target = load("lm.target") || "";
+await refresh();
+const events = new EventSource("/api/events");
+events.addEventListener("change", refresh);
+events.addEventListener("error", () => setStatus("Verbindung zum Server unterbrochen – versuche es erneut …", true));
+events.addEventListener("open", () => { if (state.project) refresh(); });
+</script>
+</body>
+</html>
