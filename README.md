@@ -202,4 +202,6 @@ Voraussetzung: Node.js 18.18 oder neuer zum Benutzen, Node.js 20.19 oder neuer z
 
 ## Lizenz
 
-MIT
+[MIT](LICENSE) – du darfst localize-me frei nutzen, auch in kommerziellen Projekten, solange der Lizenzhinweis erhalten bleibt.
+
+Die Oberfläche bringt Schriften (Geist, Geist Mono, Bricolage Grotesque – SIL Open Font License 1.1), Icons (Lucide – ISC) und die Svelte-Laufzeit (MIT) mit. Deren Lizenztexte stehen in [THIRD_PARTY_LICENSES](THIRD_PARTY_LICENSES) und werden mit dem npm-Paket ausgeliefert.
