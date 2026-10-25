@@ -1,6 +1,6 @@
 {
   "name": "@alexandercreates/localize-me",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Schlanke Übersetzungsverwaltung für iOS- und Android-Apps: Keys anlegen, übersetzen, als Localizable.strings, strings.xml oder CSV exportieren.",
   "type": "module",
   "bin": {
