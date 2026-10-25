@@ -1,0 +1,58 @@
+# Veröffentlicht auf npm, sobald ein Versions-Tag (v1.2.3) gepusht wird.
+# Ablauf: npm version patch|minor|major  →  git push --follow-tags
+#
+# Anmeldung bei npm über Trusted Publishing (OIDC), kein Token im Repo.
+# Einmalig auf npmjs.com einrichten: Paket → Settings → Trusted Publisher →
+# GitHub Actions, Repository alexandercreates/localize-me, Workflow release.yml.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write # GitHub-Release anlegen
+  id-token: write # Trusted Publishing + Provenance bei npm
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+          cache: npm
+
+      - name: Tag und package.json müssen zusammenpassen
+        run: |
+          VERSION="$(node -p "require('./package.json').version")"
+          if [ "$GITHUB_REF_NAME" != "v$VERSION" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME passt nicht zu package.json ($VERSION). Version mit 'npm version' setzen."
+            exit 1
+          fi
+          if npm view "$(node -p "require('./package.json').name")@$VERSION" version >/dev/null 2>&1; then
+            echo "::error::Version $VERSION ist auf npm schon veröffentlicht."
+            exit 1
+          fi
+
+      - run: npm ci
+        env:
+          LOCALIZE_ME_SKIP_POSTINSTALL: "1"
+
+      - run: npm test
+
+      # prepack baut die Oberfläche nach ui/
+      - name: Auf npm veröffentlichen
+        run: npm publish --provenance --access public
+
+      - name: GitHub-Release anlegen
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" --verify-tag --generate-notes --title "$GITHUB_REF_NAME"

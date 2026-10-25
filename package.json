@@ -17,7 +17,9 @@
     "start": "node bin/cli.js dev --file example/localize.json",
     "test": "node --test",
     "prepack": "npm run build",
-    "postinstall": "node bin/postinstall.js"
+    "postinstall": "node bin/postinstall.js",
+    "prepublishOnly": "node scripts/check-release.js",
+    "postversion": "git push --follow-tags"
   },
   "publishConfig": {
     "access": "public"
