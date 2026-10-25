@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { buildIosStrings, buildIosStringsdict, buildAndroidXml, nativeFiles } from "../src/native.js";
 import { buildCsv } from "../src/csv.js";
-import { categoriesFor, checkPlural, countOf } from "../src/plurals.js";
+import { categoriesFor, checkPlural, countCandidates, countOf, withCount } from "../src/plurals.js";
 import { normalize, Store } from "../src/store.js";
 
 const project = normalize({
@@ -105,4 +105,33 @@ test("Store: Plural an- und ausschalten, Formen einzeln setzen", () => {
   assert.deepEqual(store.project.keys.days, { de: "#n:int Tage" });
   store.addKey("kids", {}, { plural: true });
   assert.deepEqual(new Store(file).project.keys.kids, { de: {} });
+});
+
+test(":plural legt fest, nach welcher Zahl sich die Form richtet", () => {
+  const p = normalize({
+    base: "de",
+    languages: [{ code: "de", name: "Deutsch" }, { code: "en", name: "Englisch" }],
+    keys: {
+      spots: {
+        de: { one: "#count von #required Platz belegt", other: "#count:int von #required:plural Plätzen belegt" },
+        en: { one: "#count of #required spot taken", other: "#count of #required:int spots taken" },
+      },
+    },
+  });
+  const forms = p.keys.spots.de;
+  assert.equal(countOf(forms), "required");
+  assert.deepEqual(checkPlural(forms, undefined, "de", { isBase: true }), []);
+  // :int in der Übersetzung passt zu :plural im Basistext.
+  assert.deepEqual(checkPlural(forms, p.keys.spots.en, "en"), []);
+
+  const ios = buildIosStringsdict(p, "de");
+  assert.match(ios, /<string>%2\$#@required@<\/string>\s*<key>required<\/key>/);
+  assert.match(ios, /<key>one<\/key>\s*<string>%1\$lld von %2\$lld Platz belegt<\/string>/);
+  assert.match(buildAndroidXml(p, "de"), /<item quantity="other">%1\$d von %2\$d Plätzen belegt<\/item>/);
+});
+
+test("withCount schreibt :plural um", () => {
+  assert.equal(withCount("#count:int von #required:int Plätzen", "required"), "#count:int von #required:plural Plätzen");
+  assert.equal(withCount("#count:int von #required:plural Plätzen", "count"), "#count:plural von #required:int Plätzen");
+  assert.deepEqual(countCandidates({ other: "#name hat #a:int und #b:plural" }), ["a", "b"]);
 });

@@ -58,7 +58,7 @@
     <span class="item"><span class="tok">#anzahl<span class="type">:int</span></span> ganze Zahl</span>
     <span class="item"><span class="tok">#preis<span class="type">:float</span></span> Kommazahl</span>
     <span class="item"><span class="tok">##</span> echtes #</span>
-    <span class="subtle">→ beim Export automatisch zu %@ / %s · Plural: Formen je Sprache, Zahl über #count:int</span>
+    <span class="subtle">→ beim Export automatisch zu %@ / %s · Plural: Formen je Sprache, Zahl über #count:int oder #count:plural</span>
   </p>
 </form>
 

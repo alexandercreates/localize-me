@@ -8,8 +8,10 @@
 //
 // Welche Formen eine Sprache braucht, kommt aus den CLDR-Regeln (Intl.PluralRules):
 // Deutsch/Englisch one + other, Französisch one + many + other, Russisch one + few + many + other …
-// Die Zahl ist der erste Platzhalter mit :int in der other-Form des Basistextes. Andere Formen dürfen
-// sie weglassen („Eine offene Aufgabe“).
+// Die Zahl, nach der sich die Form richtet, ist der Platzhalter mit :plural in der other-Form des
+// Basistextes, sonst der erste mit :int. Andere Formen dürfen sie weglassen („Eine offene Aufgabe“).
+//
+//   "#count:int von #required:plural Plätzen belegt"   → Form richtet sich nach #required
 
 import { check, specOf } from "./placeholders.js";
 
@@ -43,9 +45,26 @@ export function isFilled(value) {
   return typeof value === "string" && !!value.trim();
 }
 
-/** Name des Zähl-Platzhalters (ohne #) oder "" – der erste :int in der other-Form des Basistextes. */
+/** Name des Zähl-Platzhalters (ohne #) oder "" – :plural, sonst der erste :int in der other-Form des Basistextes. */
 export function countOf(baseForms) {
-  return specOf(baseForms?.other || "").list.find((p) => p.type === "int")?.name || "";
+  const list = specOf(baseForms?.other || "").list;
+  return (list.find((p) => p.plural) || list.find((p) => p.type === "int"))?.name || "";
+}
+
+/** Zahlen-Platzhalter der other-Form, zur Auswahl, wonach sich die Form richtet. */
+export const countCandidates = (baseForms) => specOf(baseForms?.other || "").list.filter((p) => p.type === "int").map((p) => p.name);
+
+/**
+ * Setzt in `text` fest, nach welcher Zahl sich die Form richtet: `#name:plural` statt `#name:int`,
+ * alle anderen `:plural` werden wieder `:int`.
+ */
+export function withCount(text, name) {
+  let done = false;
+  return String(text).replace(/#([A-Za-z_][A-Za-z0-9_]*):(int|plural)\b/g, (m, n) => {
+    if (n !== name || done) return `#${n}:int`;
+    done = true;
+    return `#${n}:plural`;
+  });
 }
 
 /**

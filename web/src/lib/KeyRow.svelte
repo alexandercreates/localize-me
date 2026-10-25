@@ -1,6 +1,6 @@
 <script>
   import { convert } from "@shared/placeholders.js";
-  import { CATEGORY_LABELS, categoriesFor } from "@shared/plurals.js";
+  import { CATEGORY_LABELS, categoriesFor, countCandidates, countOf, withCount } from "@shared/plurals.js";
   import { app, keyUrl } from "./model.svelte.js";
   import { printfSegments, hasTokens } from "./tokens.js";
   import TokenField from "./ui/TokenField.svelte";
@@ -30,6 +30,11 @@
 
   const save = (lang, form) => (value) => app.run("PATCH", keyUrl(row.key), { lang, value, form });
   const rename = (next) => app.mutate("PATCH", keyUrl(row.key), { rename: next });
+
+  // Bei mehreren Zahlen wählen, nach welcher sich die Form richtet („3 von 1 Platz“ → #required).
+  const baseForms = $derived(row.plural ? row.values[app.base] || {} : {});
+  const candidates = $derived(row.plural ? countCandidates(baseForms) : []);
+  const chooseCount = (e) => save(app.base, "other")(withCount(baseForms.other, e.currentTarget.value));
 
   // Zurück zum einfachen Text behält nur die Form „other“ – gehen dabei Formen verloren, erst nachfragen.
   const formsLost = $derived(row.plural && Object.values(row.values).some((forms) => Object.keys(forms).some((c) => c !== "other")));
@@ -84,6 +89,14 @@
     <span class="mobile-label label">{app.langName(app.base)}</span>
     {#if row.plural}
       {@render forms(app.base, "base")}
+      {#if candidates.length > 1}
+        <label class="count-pick">
+          Form richtet sich nach
+          <select value={countOf(baseForms)} onchange={chooseCount}>
+            {#each candidates as name}<option value={name}>#{name}</option>{/each}
+          </select>
+        </label>
+      {/if}
     {:else}
       <TokenField value={row.base} label={`${row.key}: Text in ${app.langName(app.base)}`} placeholder="Basistext fehlt" onsave={save(app.base)} />
     {/if}
@@ -158,6 +171,15 @@
     .row:not(:hover):not(:focus-within) .plural-toggle:not(.on) { visibility: hidden; }
   }
 
+  .count-pick {
+    display: flex; align-items: center; gap: 8px; margin: 6px 10px 0;
+    font-size: 12px; line-height: 16px; color: var(--text-muted);
+  }
+  .count-pick select {
+    height: 26px; padding: 0 6px; border: 1px solid var(--border); border-radius: var(--radius-sm);
+    background: var(--bg-surface); color: var(--token); font: 500 12px/16px var(--font-mono);
+  }
+  .count-pick select:focus { outline: none; border-color: var(--text); box-shadow: var(--ring); }
   .forms { display: flex; flex-direction: column; gap: 4px; }
   .form-label { display: block; margin: 2px 10px 0; font-size: 12px; line-height: 16px; color: var(--text-muted); }
   .form-label .mono { color: var(--text-subtle); }

@@ -36,6 +36,7 @@ Schreib Platzhalter neutral. Beim Export werden sie ins Format der Plattform umg
 | `#name`        | Text          | `%@`   | `%s`    |
 | `#anzahl:int`  | ganze Zahl    | `%lld` | `%d`    |
 | `#preis:float` | Kommazahl     | `%f`   | `%f`    |
+| `#plätze:plural` | ganze Zahl, nach der sich ein [Plural](#plurals) richtet | `%lld` | `%d` |
 | `##`           | ein echtes #  | `#`    | `#`     |
 
 ```
@@ -61,6 +62,7 @@ Für Texte, die von einer Anzahl abhängen („Eine Aufgabe“ / „3 Aufgaben�
 ```
 
 - Die Zahl, nach der sich die Form richtet, ist der erste `:int`-Platzhalter in der Form `other` des Basistextes. Die übrigen Formen dürfen ihn weglassen („Eine offene Aufgabe“).
+- Gehört das Wort zu einer anderen Zahl, markier sie mit `:plural` statt `:int`: `#count:int von #required:plural Plätzen belegt` richtet sich nach `#required` („1 von 1 Platz“, „1 von 3 Plätzen“). Bei mehreren Zahlen gibt es dafür in der Oberfläche die Auswahl **Form richtet sich nach**. Übersetzungen dürfen weiter `:int` oder gar keinen Typ schreiben.
 - Weitere Platzhalter gehen wie gewohnt: `#name hat #count:int Plätze`.
 - Fehlende Formen und Platzhalter zeigt die Oberfläche als **Prüfen** an. Ohne Form `other` fehlt die Übersetzung in der exportierten Datei, die App zeigt dann die Basissprache.
 
@@ -69,7 +71,7 @@ Für Texte, die von einer Anzahl abhängen („Eine Aufgabe“ / „3 Aufgaben�
 | iOS       | `<sprache>.lproj/Localizable.stringsdict`     | `String(format: NSLocalizedString("tasks.open", comment: ""), count)` |
 | Android   | `<plurals>` in `strings.xml`                  | `pluralStringResource(R.plurals.tasks_open, count, count)`     |
 
-Unter Android übergibst du die Zahl zweimal: einmal für die Wahl der Form, einmal für den Platzhalter. In der CSV bekommt jede Form eine eigene Zeile (`tasks.open[one]`, `tasks.open[other]`).
+Unter Android übergibst du zuerst die Zahl, nach der sich die Form richtet, danach wie gewohnt alle Platzhalter – z. B. `pluralStringResource(R.plurals.task_spots_of, required, count, required)`. In der CSV bekommt jede Form eine eigene Zeile (`tasks.open[one]`, `tasks.open[other]`).
 
 ## Export
 

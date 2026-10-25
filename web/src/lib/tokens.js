@@ -1,6 +1,6 @@
 // Zerlegt Texte für die Anzeige in normale Teile und hervorgehobene Platzhalter.
 // Muster wie in src/placeholders.js (dort nicht exportiert).
-const NEUTRAL = /##|#[A-Za-z_][A-Za-z0-9_]*(?::(?:int|float|text))?/g;
+const NEUTRAL = /##|#[A-Za-z_][A-Za-z0-9_]*(?::(?:int|float|text|plural))?/g;
 const PRINTF = /%%|%(?:\d+\$)?(?:@|lld|d|s|f)/g;
 
 function split(text, re) {

@@ -4,6 +4,7 @@
 //   #name          Text           iOS %@     Android %s
 //   #anzahl:int    ganze Zahl     iOS %lld   Android %d
 //   #preis:float   Kommazahl      iOS %f     Android %f
+//   #plätze:plural ganze Zahl, nach der sich ein Plural richtet (sonst wie :int, siehe plurals.js)
 //   ##             echtes "#"
 //
 // Reihenfolge und Typ legt der Basistext fest. Bei mehr als einem Platzhalter wird
@@ -16,14 +17,17 @@ const FORMATS = {
   android: { text: "s", int: "d", float: "f" },
 };
 
-const TOKEN = /##|#([A-Za-z_][A-Za-z0-9_]*)(?::(int|float|text))?/g;
-const TOKEN_OR_PERCENT = /##|#([A-Za-z_][A-Za-z0-9_]*)(?::(int|float|text))?|%/g;
+const TOKEN = /##|#([A-Za-z_][A-Za-z0-9_]*)(?::(int|float|text|plural))?/g;
+const TOKEN_OR_PERCENT = /##|#([A-Za-z_][A-Za-z0-9_]*)(?::(int|float|text|plural))?|%/g;
 
-/** Alle Platzhalter eines Textes in Reihenfolge, `type` ist null ohne explizite Angabe. */
+/**
+ * Alle Platzhalter eines Textes in Reihenfolge, `type` ist null ohne explizite Angabe.
+ * `:plural` zählt als `int` und setzt zusätzlich `plural`.
+ */
 export function parse(text) {
   const out = [];
   String(text ?? "").replace(TOKEN, (m, name, type) => {
-    if (m !== "##") out.push({ name, type: type || null });
+    if (m !== "##") out.push({ name, type: type === "plural" ? "int" : type || null, plural: type === "plural" });
     return m;
   });
   return out;
@@ -38,8 +42,9 @@ export function specOf(text) {
   let conflict = "";
   for (const p of parse(text)) {
     const s = spec.find((x) => x.name === p.name);
-    if (!s) spec.push({ name: p.name, type: p.type || "text", explicit: !!p.type });
+    if (!s) spec.push({ name: p.name, type: p.type || "text", explicit: !!p.type, plural: p.plural });
     else if (p.type) {
+      if (p.plural) s.plural = true;
       if (!s.explicit) { s.type = p.type; s.explicit = true; }
       else if (s.type !== p.type) conflict = p.name;
     }
@@ -62,7 +67,7 @@ export function convert(text, platform, baseText = text) {
     if (m === "##") return "#";
     if (m === "%") return formatted ? "%%" : "%";
     let idx = spec.findIndex((p) => p.name === name);
-    const t = idx >= 0 ? spec[idx].type : type || "text";
+    const t = idx >= 0 ? spec[idx].type : type === "plural" ? "int" : type || "text";
     if (idx < 0) idx = spec.length;
     return "%" + (positional ? `${idx + 1}$` : "") + formats[t];
   });
