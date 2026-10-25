@@ -73,6 +73,31 @@ Für Texte, die von einer Anzahl abhängen („Eine Aufgabe“ / „3 Aufgaben�
 
 Unter Android übergibst du zuerst die Zahl, nach der sich die Form richtet, danach wie gewohnt alle Platzhalter – z. B. `pluralStringResource(R.plurals.task_spots_of, required, count, required)`. In der CSV bekommt jede Form eine eigene Zeile (`tasks.open[one]`, `tasks.open[other]`).
 
+### Und die Null?
+
+Eine Form `zero` bekommen nur Sprachen, deren Grammatik eine eigene Null-Form hat, z. B. Arabisch oder Lettisch. Dort zeigt die Oberfläche das Feld **null** automatisch an. Im Deutschen und Englischen gehört 0 grammatisch zu `other` („0 offene Aufgaben“), deshalb gibt es dort kein Null-Feld. Steht trotzdem ein `zero` in der `localize.json`, wird es für diese Sprachen nicht exportiert.
+
+Der Grund sind die Plattformen, die eine Null-Form unterschiedlich behandeln:
+
+- **Android** nutzt `quantity="zero"` nur in Sprachen, die laut CLDR eine Null-Form haben. Im Deutschen wird der Eintrag stillschweigend ignoriert, die App zeigt die Form `other`.
+- **iOS** nutzt einen `zero`-Eintrag in der `.stringsdict` bei 0 in jeder Sprache.
+
+Ein deutsches „Keine offenen Aufgaben“ als Pluralform stünde also auf dem iPhone, auf Android käme „0 offene Aufgaben“. localize-me exportiert nur, was auf beiden Plattformen gleich herauskommt.
+
+Willst du für 0 einen eigenen Text, leg einen eigenen Key an und entscheide im Code. Das verhält sich überall gleich und passt meist ohnehin besser, weil ein leerer Zustand oft anders aussieht (anderer Satz, ausgeblendete Zeile, Hinweis statt Zahl):
+
+```swift
+// iOS
+let text = count == 0 ? NSLocalizedString("tasks.open_none", comment: "")
+                      : String(format: NSLocalizedString("tasks.open", comment: ""), count)
+```
+
+```kotlin
+// Android
+val text = if (count == 0) stringResource(R.string.tasks_open_none)
+           else pluralStringResource(R.plurals.tasks_open, count, count)
+```
+
 ## Export
 
 ### Direkt ins App-Projekt
