@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { Store, ValidationError } from "./store.js";
 import { buildCsv, csvFilename } from "./csv.js";
 import { PLATFORMS } from "./placeholders.js";
+import { configuredOutputs, writeNative } from "./native.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const UI_DIR = path.join(here, "..", "ui");
@@ -155,6 +156,22 @@ export function createServer({ file, uiDir = UI_DIR }) {
           "Content-Type": "text/csv; charset=utf-8",
           "Content-Disposition": `attachment; filename="${csvFilename(used, platform)}"`,
         });
+      }
+
+      // POST /api/export/native  – schreibt die Dateien in die Ordner aus "output"
+      if (method === "POST" && parts[1] === "export" && parts[2] === "native") {
+        const outputs = configuredOutputs(store.project, store.file);
+        if (!outputs.length) throw new ValidationError('Trage in localize.json unter "output" die Zielordner für ios und android ein.');
+        const root = path.dirname(store.file);
+        const files = [];
+        for (const { platform, dir } of outputs) {
+          try {
+            for (const f of writeNative(store.project, platform, dir)) files.push({ platform, file: path.relative(root, f.file), changed: f.changed });
+          } catch (e) {
+            throw new ValidationError(e.message);
+          }
+        }
+        return send(res, 200, { files });
       }
 
       // POST /api/keys {key, values}

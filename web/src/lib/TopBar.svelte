@@ -41,7 +41,7 @@
     <kbd>{isMac ? "⌘K" : "Strg K"}</kbd>
   </div>
 
-  <Button variant={exportVariant} icon="download" disabled={!app.keyNames.length} onclick={() => (app.exportOpen = true)}>CSV exportieren</Button>
+  <Button variant={exportVariant} icon="download" disabled={!app.keyNames.length} onclick={() => (app.exportOpen = true)}>Exportieren</Button>
 </header>
 
 <style>

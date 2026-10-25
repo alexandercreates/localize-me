@@ -1,6 +1,6 @@
 # localize-me
 
-Schlanke Übersetzungsverwaltung für iOS- und Android-Apps. Keys anlegen, Texte übersetzen, als CSV exportieren – ohne Account, ohne Cloud, ohne Abhängigkeiten. Die Texte liegen als `localize.json` in deinem Projekt und lassen sich ganz normal mit Git versionieren.
+Schlanke Übersetzungsverwaltung für iOS- und Android-Apps. Keys anlegen, Texte übersetzen, als `Localizable.strings`/`strings.xml` oder CSV exportieren – ohne Account, ohne Cloud, ohne Abhängigkeiten. Die Texte liegen als `localize.json` in deinem Projekt und lassen sich ganz normal mit Git versionieren.
 
 ## Schnellstart
 
@@ -51,19 +51,55 @@ Hallo #name, schön dich zu sehen
 
 ## Export
 
-In der Oberfläche über **CSV exportieren**, oder auf der Kommandozeile, z. B. im Build:
+### Direkt ins App-Projekt
+
+Trag in der `localize.json` ein, wohin die Dateien sollen (relativ zur `localize.json`):
+
+```json
+{
+  "output": {
+    "ios": "../ios/MeineApp/Resources",
+    "android": "../android/app/src/main/res"
+  }
+}
+```
+
+Dann schreibt **Exportieren → Dateien schreiben** in der Oberfläche oder auf der Kommandozeile
 
 ```bash
-npx localize-me export --platform ios
-npx localize-me export --platform android --langs de,en --delimiter , --out app/strings.csv
+npx localize-me export
 ```
+
+| Plattform | Datei                                                        |
+| --------- | ------------------------------------------------------------ |
+| iOS       | `<ziel>/<sprache>.lproj/Localizable.strings`                 |
+| Android   | `<ziel>/values/strings.xml` (Basissprache), `values-<sprache>/strings.xml` |
+
+- Platzhalter werden wie unten umgewandelt, Sonderzeichen passend escaped.
+- Android-Namen entstehen aus dem Key: `login.title` → `R.string.login_title`. Ergeben zwei Keys denselben Namen, bricht der Export mit einer Meldung ab.
+- Fehlt eine Übersetzung, fehlt sie auch in der Datei – die App zeigt dann den Text der Basissprache.
+- Unveränderte Dateien werden nicht angefasst, Xcode und Gradle bauen also nicht unnötig neu.
+
+Ohne `output` geht es auch einmalig: `npx localize-me export --platform ios --format native --out ios/App/Resources`.
+
+### CSV
+
+In der Oberfläche über **Exportieren**, oder auf der Kommandozeile, z. B. im Build:
+
+```bash
+npx localize-me export --format csv --platform ios
+npx localize-me export --format csv --platform android --langs de,en --delimiter , --out app/strings.csv
+```
+
+Ohne `output` in der `localize.json` ist CSV der Standard, `--format csv` kann dann entfallen.
 
 | Option        | Werte                       | Standard                              |
 | ------------- | --------------------------- | ------------------------------------- |
-| `--platform`  | `ios`, `android`, `raw`     | `raw`                                 |
+| `--format`    | `native`, `csv`             | `native` mit `output`, sonst `csv`    |
+| `--platform`  | `ios`, `android`, `raw`     | native: alle aus `output`, csv: `raw` |
 | `--langs`     | Sprachcodes, kommagetrennt  | alle, Basissprache zuerst             |
 | `--delimiter` | `;` oder `,`                | `;` (öffnet sauber in deutschem Excel) |
-| `--out`       | Pfad                        | `strings_<sprachen>_<plattform>.csv`  |
+| `--out`       | Pfad                        | native: aus `output`, csv: `strings_<sprachen>_<plattform>.csv` |
 | `--file`      | Pfad zur Textdatei          | `localize.json`                       |
 
 Die CSV ist UTF-8 mit BOM, alle Werte stehen in Anführungszeichen.
@@ -85,6 +121,7 @@ Ist der Port belegt, nimmt localize-me automatisch den nächsten freien.
     { "code": "de", "name": "Deutsch" },
     { "code": "en", "name": "Englisch" }
   ],
+  "output": { "ios": "../ios/MeineApp/Resources", "android": "../android/app/src/main/res" },
   "keys": {
     "home.greeting": {
       "de": "Hallo #name, schön dich zu sehen.",

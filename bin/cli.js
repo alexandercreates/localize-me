@@ -8,6 +8,7 @@ import { createServer, listen } from "../src/server.js";
 import { Store } from "../src/store.js";
 import { buildCsv, csvFilename } from "../src/csv.js";
 import { PLATFORMS } from "../src/placeholders.js";
+import { NATIVE_PLATFORMS, configuredOutputs, writeNative } from "../src/native.js";
 import { addScripts } from "../src/project.js";
 
 const pkg = JSON.parse(fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "package.json"), "utf8"));
@@ -16,7 +17,7 @@ const HELP = `localize-me ${pkg.version}
 
 Verwendung:
   localize-me [dev]        Oberfläche starten (Standard)
-  localize-me export       CSV exportieren
+  localize-me export       Dateien für iOS/Android schreiben bzw. CSV exportieren
   localize-me init         Start-Skript in package.json eintragen und localize.json anlegen
 
 Optionen für dev:
@@ -25,10 +26,13 @@ Optionen für dev:
   --no-open                Browser nicht automatisch öffnen
 
 Optionen für export:
-  --platform <ios|android|raw>   Platzhalter umwandeln (Standard: raw)
-  --langs <de,en>          Sprachen in Spaltenreihenfolge (Standard: alle, Basis zuerst)
-  --delimiter <;|,>        Trennzeichen (Standard: ;)
-  --out <pfad>             Zieldatei (Standard: strings_<sprachen>_<plattform>.csv)
+  --format <native|csv>    native: Localizable.strings / strings.xml, csv: Tabelle
+                           (Standard: native, wenn localize.json "output" enthält, sonst csv)
+  --platform <ios|android|raw>   Plattform (native: Standard alle aus "output"; csv: Standard raw)
+  --langs <de,en>          CSV: Sprachen in Spaltenreihenfolge (Standard: alle, Basis zuerst)
+  --delimiter <;|,>        CSV: Trennzeichen (Standard: ;)
+  --out <pfad>             native: Zielordner (Standard: aus "output")
+                           csv: Zieldatei (Standard: strings_<sprachen>_<plattform>.csv)
   --file <pfad>            Datei mit den Texten (Standard: localize.json)
 `;
 
@@ -46,6 +50,7 @@ try {
       file: { type: "string" },
       "no-open": { type: "boolean" },
       platform: { type: "string" },
+      format: { type: "string" },
       langs: { type: "string" },
       delimiter: { type: "string" },
       out: { type: "string" },
@@ -69,7 +74,7 @@ switch (command) {
     await dev();
     break;
   case "export":
-    exportCsv();
+    exportCommand();
     break;
   case "init":
     init();
@@ -104,15 +109,42 @@ async function dev() {
   process.on("SIGTERM", stop);
 }
 
-function exportCsv() {
+function exportCommand() {
   if (!fs.existsSync(file)) fail(`${path.relative(process.cwd(), file)} gibt es nicht. Starte zuerst die Oberfläche oder nutze --file.`);
+  let store;
+  try { store = new Store(file); } catch (e) { fail(e.message); }
+  const outputs = configuredOutputs(store.project, file);
+  const format = opts.format || (outputs.length ? "native" : "csv");
+  if (format === "native") exportNative(store.project, outputs);
+  else if (format === "csv") exportCsv(store.project);
+  else fail(`Unbekanntes Format „${format}“. Erlaubt: native, csv`);
+}
+
+function exportNative(project, outputs) {
+  if (opts.platform && !NATIVE_PLATFORMS.includes(opts.platform)) fail(`Unbekannte Plattform „${opts.platform}“. Erlaubt: ${NATIVE_PLATFORMS.join(", ")}`);
+  const platforms = opts.platform ? [opts.platform] : outputs.map((o) => o.platform);
+  if (!platforms.length) fail('Kein Ziel: --platform ios|android und --out <ordner> angeben oder "output" in localize.json eintragen.');
+  if (opts.out && platforms.length > 1) fail("--out braucht --platform, weil jede Plattform einen eigenen Ordner hat.");
+
+  const empty = Object.keys(project.keys).filter((k) => !(project.keys[k][project.base] || "").trim());
+  if (empty.length) console.warn(`localize-me: ${empty.length} Keys ohne Text in der Basissprache ${project.base}: ${empty.slice(0, 5).join(", ")}${empty.length > 5 ? " …" : ""}`);
+
+  for (const platform of platforms) {
+    const dir = opts.out ? path.resolve(opts.out) : outputs.find((o) => o.platform === platform)?.dir;
+    if (!dir) fail(`Kein Zielordner für ${platform}: --out angeben oder output.${platform} in localize.json eintragen.`);
+    let written;
+    try { written = writeNative(project, platform, dir); } catch (e) { fail(e.message); }
+    for (const { file: out, changed } of written) {
+      console.log(`localize-me: ${platform} → ${path.relative(process.cwd(), out)}${changed ? "" : " (unverändert)"}`);
+    }
+  }
+}
+
+function exportCsv(project) {
   const platform = opts.platform || "raw";
   if (!PLATFORMS.includes(platform)) fail(`Unbekannte Plattform „${platform}“. Erlaubt: ${PLATFORMS.join(", ")}`);
   const delimiter = opts.delimiter === "," ? "," : ";";
 
-  let store;
-  try { store = new Store(file); } catch (e) { fail(e.message); }
-  const project = store.project;
   const langs = opts.langs
     ? opts.langs.split(",").map((s) => s.trim()).filter(Boolean)
     : [project.base, ...project.languages.map((l) => l.code).filter((c) => c !== project.base)];

@@ -57,7 +57,7 @@
       {:else if t.review}
         <Button variant="primary" icon="arrowRight" onclick={() => show("review")}>Konflikte prüfen</Button>
       {:else}
-        <Button variant="primary" icon="download" onclick={() => (app.exportOpen = true)}>CSV exportieren</Button>
+        <Button variant="primary" icon="download" onclick={() => (app.exportOpen = true)}>Exportieren</Button>
       {/if}
     </div>
   {/if}

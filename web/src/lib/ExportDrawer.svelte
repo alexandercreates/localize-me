@@ -31,6 +31,23 @@
   const lines = $derived(app.project ? buildCsv(app.project, { platform, languages: langs, delimiter, bom: false }).trimEnd().split("\r\n") : []);
   const missing = $derived(langs.slice(1).reduce((n, code) => n + app.keyNames.filter((k) => !(app.project.keys[k][code] || "").trim()).length, 0));
   const href = $derived("/api/export?" + new URLSearchParams({ platform, delimiter, langs: langs.join(",") }));
+  // Zielordner aus "output" in localize.json – dann schreibt der Server die Dateien direkt ins App-Projekt.
+  const outputs = $derived(Object.entries(app.project?.output ?? {}));
+  let writing = $state(false);
+
+  async function writeNative() {
+    writing = true;
+    try {
+      const { files } = await app.request("POST", "/api/export/native");
+      const changed = files.filter((f) => f.changed).length;
+      app.notify(changed ? `${changed} ${changed === 1 ? "Datei" : "Dateien"} aktualisiert.` : "Alle Dateien sind schon aktuell.");
+    } catch (e) {
+      app.notify(e.message, "error");
+    } finally {
+      writing = false;
+    }
+  }
+
   const cli = $derived(`npx localize-me export --platform ${platform}` +
     (scope === "pair" && app.target ? ` --langs ${langs.join(",")}` : "") +
     (delimiter === "," ? " --delimiter ," : ""));
@@ -55,13 +72,31 @@
   <div class="panel">
     <header>
       <div>
-        <h2 id="export-title">CSV exportieren</h2>
+        <h2 id="export-title">Exportieren</h2>
         <p>{app.keyNames.length} Keys · {langs.map((c) => app.langName(c)).join(" → ")}</p>
       </div>
       <button type="button" class="close" aria-label="Schließen" onclick={() => dialog.close()}><Icon name="x" size={18} /></button>
     </header>
 
     <div class="body">
+      {#if outputs.length}
+        <section class="native" aria-labelledby="native-title">
+          <h3 id="native-title" class="label">In die App-Projekte schreiben</h3>
+          <ul>
+            {#each outputs as [platform, dir]}
+              <li>
+                <Icon name={platform === "ios" ? "apple" : "android"} size={16} />
+                <span class="mono">{dir}</span>
+                <span class="kind">{platform === "ios" ? "Localizable.strings" : "strings.xml"}</span>
+              </li>
+            {/each}
+          </ul>
+          <Button variant="primary" icon="download" class="wide" disabled={writing} onclick={writeNative}>{writing ? "Wird geschrieben …" : "Dateien schreiben"}</Button>
+          <p class="note">Gleich wie <span class="mono">npx localize-me export</span> im Terminal.</p>
+        </section>
+        <h3 class="label csv-title">Oder als CSV</h3>
+      {/if}
+
       <fieldset>
         <legend class="label">Plattform</legend>
         <div class="segmented">
@@ -114,7 +149,7 @@
     </div>
 
     <footer>
-      <Button variant="primary" {href} download={filename} icon="download" class="wide" onclick={() => app.notify("CSV wird heruntergeladen.")}>CSV herunterladen</Button>
+      <Button variant={outputs.length ? "secondary" : "primary"} {href} download={filename} icon="download" class="wide" onclick={() => app.notify("CSV wird heruntergeladen.")}>CSV herunterladen</Button>
       <button type="button" class="cli" onclick={copy} title="Befehl kopieren">
         <Icon name={copied ? "check" : "terminal"} size={14} /><span class="mono">{copied ? "Kopiert" : cli}</span>
       </button>
@@ -183,6 +218,15 @@
     border-radius: 12px; background: var(--missing-soft); font-size: 13px; line-height: 18px;
   }
   .callout :global(svg) { color: var(--missing); margin-top: 1px; }
+
+  .native { display: flex; flex-direction: column; gap: 10px; }
+  .native h3 { margin: 0; }
+  .native ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+  .native li { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-radius: 12px; background: var(--bg-sunken); font-size: 13px; line-height: 18px; }
+  .native li .mono { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .native li .kind { color: var(--text-muted); font-size: 12px; }
+  .native :global(.wide) { width: 100%; }
+  .csv-title { margin: 0 0 -18px; }
 
   footer { display: flex; flex-direction: column; gap: 12px; padding: 20px 28px; border-top: 1px solid var(--border); }
   footer :global(.wide) { width: 100%; }

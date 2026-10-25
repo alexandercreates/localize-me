@@ -6,8 +6,11 @@ import path from "node:path";
 // {
 //   "base": "de",
 //   "languages": [{ "code": "de", "name": "Deutsch" }],
+//   "output": { "ios": "../ios/App/Resources", "android": "../android/app/src/main/res" },
 //   "keys": { "onboarding.title": { "de": "Willkommen!" } }
 // }
+//
+// `output` ist optional: Zielordner für `localize-me export`, relativ zu localize.json.
 
 export const KEY_PATTERN = /^[A-Za-z0-9_.\-]+$/;
 export const LANG_PATTERN = /^[a-z]{2,3}([-_][A-Za-z0-9]{2,4})?$/;
@@ -35,7 +38,12 @@ export function normalize(data) {
       if (typeof values[code] === "string") keys[name][code] = values[code];
     }
   }
-  return { base, languages, keys };
+  const output = {};
+  for (const platform of ["ios", "android"]) {
+    const dir = data?.output?.[platform];
+    if (typeof dir === "string" && dir.trim()) output[platform] = dir.trim();
+  }
+  return Object.keys(output).length ? { base, languages, output, keys } : { base, languages, keys };
 }
 
 export function serialize(project) {
