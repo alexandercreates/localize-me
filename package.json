@@ -12,8 +12,11 @@
     "ui"
   ],
   "scripts": {
-    "dev": "node bin/cli.js dev --file example/localize.json",
+    "dev": "node scripts/dev.js",
+    "build": "vite build",
+    "start": "node bin/cli.js dev --file example/localize.json",
     "test": "node --test",
+    "prepack": "npm run build",
     "postinstall": "node bin/postinstall.js"
   },
   "publishConfig": {
@@ -40,5 +43,13 @@
   "bugs": {
     "url": "https://github.com/alexandercreates/localize-me/issues"
   },
-  "homepage": "https://github.com/alexandercreates/localize-me#readme"
+  "homepage": "https://github.com/alexandercreates/localize-me#readme",
+  "devDependencies": {
+    "@fontsource-variable/bricolage-grotesque": "^5.3.0",
+    "@fontsource-variable/geist": "^5.3.0",
+    "@fontsource-variable/geist-mono": "^5.3.0",
+    "@sveltejs/vite-plugin-svelte": "^7.3.1",
+    "svelte": "^5.57.2",
+    "vite": "^8.3.5"
+  }
 }

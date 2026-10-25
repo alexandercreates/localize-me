@@ -7,11 +7,21 @@ import { buildCsv, csvFilename } from "./csv.js";
 import { PLATFORMS } from "./placeholders.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const UI_FILE = path.join(here, "..", "ui", "index.html");
-const PLACEHOLDERS_FILE = path.join(here, "placeholders.js");
+const UI_DIR = path.join(here, "..", "ui");
 const MAX_BODY = 1024 * 1024;
+const MIME = {
+  ".html": "text/html; charset=utf-8",
+  ".js": "text/javascript; charset=utf-8",
+  ".css": "text/css; charset=utf-8",
+  ".svg": "image/svg+xml",
+  ".woff2": "font/woff2",
+  ".png": "image/png",
+  ".ico": "image/x-icon",
+  ".json": "application/json; charset=utf-8",
+};
 
-export function createServer({ file }) {
+/** `uiDir: null` startet nur die API (Entwicklung mit Vite). */
+export function createServer({ file, uiDir = UI_DIR }) {
   const store = new Store(file);
   store.ensureFile();
   const clients = new Set();
@@ -43,6 +53,27 @@ export function createServer({ file }) {
       ...headers,
     });
     res.end(isText ? body : JSON.stringify(body));
+  }
+
+  // Gebaute Oberfläche aus ui/. Dateien unter /assets/ tragen einen Hash im Namen und dürfen gecacht werden.
+  function serveUi(res, pathname) {
+    const rel = pathname === "/" ? "index.html" : decodeURIComponent(pathname).replace(/^\/+/, "");
+    const target = path.resolve(uiDir, rel);
+    if (!target.startsWith(path.resolve(uiDir) + path.sep)) return send(res, 404, "Nicht gefunden.");
+    let body;
+    try {
+      body = fs.readFileSync(target);
+    } catch {
+      if (rel === "index.html") {
+        return send(res, 500, "Die Oberfläche ist noch nicht gebaut. Führe im Paketordner `npm run build` aus.");
+      }
+      return send(res, 404, "Nicht gefunden.");
+    }
+    res.writeHead(200, {
+      "Content-Type": MIME[path.extname(target)] || "application/octet-stream",
+      "Cache-Control": rel.startsWith("assets/") ? "public, max-age=31536000, immutable" : "no-store",
+    });
+    res.end(body);
   }
 
   function projectPayload() {
@@ -88,14 +119,10 @@ export function createServer({ file }) {
         return send(res, 403, { error: "Fremde Herkunft abgelehnt." });
       }
 
-      if (method === "GET" && url.pathname === "/") {
-        return send(res, 200, fs.readFileSync(UI_FILE, "utf8"), { "Content-Type": "text/html; charset=utf-8" });
+      if (parts[0] !== "api") {
+        if ((method === "GET" || method === "HEAD") && uiDir) return serveUi(res, url.pathname);
+        return send(res, 404, { error: "Nicht gefunden." });
       }
-      if (method === "GET" && url.pathname === "/placeholders.js") {
-        return send(res, 200, fs.readFileSync(PLACEHOLDERS_FILE, "utf8"), { "Content-Type": "text/javascript; charset=utf-8" });
-      }
-
-      if (parts[0] !== "api") return send(res, 404, { error: "Nicht gefunden." });
 
       // GET /api/project
       if (method === "GET" && parts[1] === "project" && parts.length === 2) {

@@ -103,11 +103,16 @@ Entfernst du eine Zielsprache, bleiben ihre Texte in der Datei. Legst du die Spr
 ```bash
 git clone https://github.com/alexandercreates/localize-me.git
 cd localize-me
-npm run dev     # startet mit example/localize.json
+npm install
+npm run dev     # Oberfläche mit Hot Reload, Texte aus example/localize.json
+npm run build   # baut die Oberfläche nach ui/
+npm start       # gebaute Version so starten, wie Nutzer sie bekommen
 npm test
 ```
 
-Voraussetzung: Node.js 18.18 oder neuer.
+Die Oberfläche ist mit Svelte 5 und Vite gebaut, der Quellcode liegt in `web/`. Svelte und Vite sind nur Entwicklungs-Abhängigkeiten: `npm pack` bzw. `npm publish` baut vorher automatisch nach `ui/`, das veröffentlichte Paket hat keine Abhängigkeiten. Platzhalter-Logik und CSV-Aufbau (`src/placeholders.js`, `src/csv.js`) teilen sich Server, CLI und Oberfläche.
+
+Voraussetzung: Node.js 18.18 oder neuer zum Benutzen, Node.js 20.19 oder neuer zum Entwickeln (wegen Vite).
 
 ## Lizenz
 
