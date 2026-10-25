@@ -6,6 +6,7 @@ import { Store, ValidationError } from "./store.js";
 import { buildCsv, csvFilename } from "./csv.js";
 import { PLATFORMS } from "./placeholders.js";
 import { configuredOutputs, writeNative } from "./native.js";
+import { afterExport, DEFAULT_MESSAGE } from "./versioning.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const UI_DIR = path.join(here, "..", "ui");
@@ -21,11 +22,16 @@ const MIME = {
   ".json": "application/json; charset=utf-8",
 };
 
-/** `uiDir: null` startet nur die API (Entwicklung mit Vite). */
-export function createServer({ file, uiDir = UI_DIR }) {
+/**
+ * `uiDir: null` startet nur die API (Entwicklung mit Vite).
+ * `versioning`: was nach „Dateien schreiben“ passiert – { commit, push, message, hook }, siehe versioning.js.
+ */
+export function createServer({ file, uiDir = UI_DIR, versioning = {} }) {
   const store = new Store(file);
   store.ensureFile();
   const clients = new Set();
+  const versioned = !!(versioning.commit || versioning.push || versioning.hook);
+  let exporting = false;
 
   // Änderungen von außen (git pull, Editor) an alle offenen Tabs melden.
   let timer = null;
@@ -78,7 +84,16 @@ export function createServer({ file, uiDir = UI_DIR }) {
   }
 
   function projectPayload() {
-    return { ...store.project, file: store.file };
+    return {
+      ...store.project,
+      file: store.file,
+      versioning: {
+        commit: !!(versioning.commit || versioning.push),
+        push: !!versioning.push,
+        hook: !!versioning.hook,
+        message: versioning.message || DEFAULT_MESSAGE,
+      },
+    };
   }
 
   async function readJson(req) {
@@ -158,20 +173,31 @@ export function createServer({ file, uiDir = UI_DIR }) {
         });
       }
 
-      // POST /api/export/native  – schreibt die Dateien in die Ordner aus "output"
+      // POST /api/export/native {message?} – schreibt die Dateien in die Ordner aus "output",
+      // danach ggf. Commit/Push und eigener Befehl (Ergebnis unter `after`).
       if (method === "POST" && parts[1] === "export" && parts[2] === "native") {
+        const body = req.headers["content-type"] ? await readJson(req) : {};
         const outputs = configuredOutputs(store.project, store.file);
         if (!outputs.length) throw new ValidationError('Trage in localize.json unter "output" die Zielordner für ios und android ein.');
-        const root = path.dirname(store.file);
-        const files = [];
-        for (const { platform, dir } of outputs) {
-          try {
-            for (const f of writeNative(store.project, platform, dir)) files.push({ platform, file: path.relative(root, f.file), changed: f.changed });
-          } catch (e) {
-            throw new ValidationError(e.message);
+        if (exporting) return send(res, 409, { error: "Ein Export läuft gerade schon. Bitte kurz warten." });
+        exporting = true;
+        try {
+          const root = path.dirname(store.file);
+          const written = [];
+          for (const { platform, dir } of outputs) {
+            try {
+              for (const f of writeNative(store.project, platform, dir)) written.push({ platform, ...f });
+            } catch (e) {
+              throw new ValidationError(e.message);
+            }
           }
+          const files = written.map((f) => ({ platform: f.platform, file: path.relative(root, f.file), changed: f.changed }));
+          if (!versioned) return send(res, 200, { files });
+          const message = typeof body.message === "string" ? body.message : "";
+          return send(res, 200, { files, after: await afterExport(versioning, { file: store.file, written, message }) });
+        } finally {
+          exporting = false;
         }
-        return send(res, 200, { files });
       }
 
       // POST /api/keys {key, values, plural?}

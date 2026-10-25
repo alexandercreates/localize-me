@@ -36,18 +36,50 @@
   const outputs = $derived(Object.entries(app.project?.output ?? {}));
   const hasPlurals = $derived(app.keyNames.some((k) => isPluralKey(app.project.keys[k])));
   let writing = $state(false);
+  // Commit/Push/Befehl nach dem Export – nur per CLI einstellbar (--commit, --push, --after-export).
+  const versioning = $derived(app.project?.versioning ?? {});
+  const followUp = $derived(sentence(["Schreibt die Dateien", versioning.commit && "committet", versioning.push && "pusht", versioning.hook && "führt danach den eingestellten Befehl aus"]));
+  let message = $state("");
+  let report = $state(null);
 
   async function writeNative() {
     writing = true;
+    report = null;
     try {
-      const { files } = await app.request("POST", "/api/export/native");
+      const { files, after } = await app.request("POST", "/api/export/native", { message });
       const changed = files.filter((f) => f.changed).length;
-      app.notify(changed ? `${changed} ${changed === 1 ? "Datei" : "Dateien"} aktualisiert.` : "Alle Dateien sind schon aktuell.");
+      const summary = changed ? `${changed} ${changed === 1 ? "Datei" : "Dateien"} aktualisiert.` : "Alle Dateien sind schon aktuell.";
+      if (!after) return app.notify(summary);
+      report = buildReport(summary, after);
+      if (report.ok) message = "";
+      app.notify(report.ok ? report.lines.join(" ") : "Dateien geschrieben, aber ein Schritt danach ist fehlgeschlagen.", report.ok ? "ok" : "error");
     } catch (e) {
       app.notify(e.message, "error");
     } finally {
       writing = false;
     }
+  }
+
+  // ["A", "b", "c"] → "A, b und c."
+  function sentence(parts) {
+    const list = parts.filter(Boolean);
+    if (list.length < 2) return "";
+    return list.slice(0, -1).join(", ") + " und " + list.at(-1) + ".";
+  }
+
+  function buildReport(summary, after) {
+    const lines = [summary];
+    const errors = [];
+    const several = (after.git?.length ?? 0) > 1;
+    for (const r of after.git ?? []) {
+      const where = several && r.repo ? ` (${r.repo.split("/").pop()})` : "";
+      if (r.error) errors.push(`Git${where}: ${r.error}`);
+      else if (r.commit) lines.push(`Commit ${r.commit}${r.pushed ? " erstellt und gepusht" : " erstellt"}${where}.`);
+      else lines.push(`Nichts Neues zu committen${r.pushed ? ", Repo ist auf dem Stand des Remotes" : ""}${where}.`);
+    }
+    if (after.hook?.ok) lines.push("Befehl nach dem Export ausgeführt.");
+    else if (after.hook) errors.push(after.hook.error + (after.hook.output ? `\n${after.hook.output}` : ""));
+    return { ok: !errors.length, lines, errors };
   }
 
   const cli = $derived(`npx localize-me export --platform ${platform}` +
@@ -93,8 +125,29 @@
               </li>
             {/each}
           </ul>
-          <Button variant="primary" icon="download" class="wide" disabled={writing} onclick={writeNative}>{writing ? "Wird geschrieben …" : "Dateien schreiben"}</Button>
-          <p class="note">Gleich wie <span class="mono">npx localize-me export</span> im Terminal.</p>
+          {#if versioning.commit}
+            <label class="field">
+              <span class="label">Commit-Nachricht</span>
+              <input bind:value={message} placeholder={versioning.message} autocomplete="off" />
+            </label>
+          {/if}
+          <Button variant="primary" icon="download" class="wide" disabled={writing} onclick={writeNative}>
+            {writing ? (followUp ? "Wird geschrieben und versioniert …" : "Wird geschrieben …") : versioning.commit ? "Schreiben und committen" : "Dateien schreiben"}
+          </Button>
+          {#if followUp}
+            <p class="note">{followUp}</p>
+          {:else}
+            <p class="note">Gleich wie <span class="mono">npx localize-me export</span> im Terminal.</p>
+          {/if}
+          {#if report}
+            <div class={["report", report.ok ? "ok" : "failed"]} role="status">
+              <Icon name={report.ok ? "check" : "alert"} size={16} />
+              <div>
+                {#each report.lines as line}<p>{line}</p>{/each}
+                {#each report.errors as error}<pre>{error}</pre>{/each}
+              </div>
+            </div>
+          {/if}
         </section>
         <h3 class="label csv-title">Oder als CSV</h3>
       {/if}
@@ -229,6 +282,22 @@
   .native li .kind { color: var(--text-muted); font-size: 12px; }
   .native :global(.wide) { width: 100%; }
   .csv-title { margin: 0 0 -18px; }
+  .field { display: flex; flex-direction: column; gap: 6px; }
+  .field input {
+    width: 100%; height: 40px; padding: 0 12px;
+    border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--bg-surface); color: var(--text);
+  }
+  .field input::placeholder { color: var(--text-subtle); }
+  .field input:focus { outline: none; border-color: var(--text); box-shadow: var(--ring); }
+  .report { display: flex; gap: 10px; align-items: flex-start; padding: 12px 14px; border-radius: 12px; font-size: 13px; line-height: 18px; }
+  .report.ok { background: var(--accent-soft); }
+  .report.ok :global(svg) { color: var(--success); }
+  .report.failed { background: var(--danger-soft); }
+  .report.failed :global(svg) { color: var(--danger); }
+  .report :global(svg) { flex: none; margin-top: 1px; }
+  .report div { min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+  .report p { margin: 0; }
+  .report pre { margin: 0; padding: 0; font: 400 12px/18px var(--font-mono); white-space: pre-wrap; overflow-wrap: anywhere; }
 
   footer { display: flex; flex-direction: column; gap: 12px; padding: 20px 28px; border-top: 1px solid var(--border); }
   footer :global(.wide) { width: 100%; }
