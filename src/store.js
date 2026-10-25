@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { CATEGORIES, isPluralKey, isPluralValue } from "./plurals.js";
 
 // localize.json – eine Datei, git-freundlich: Keys alphabetisch, eine Zeile pro Sprache.
 //
@@ -7,10 +8,14 @@ import path from "node:path";
 //   "base": "de",
 //   "languages": [{ "code": "de", "name": "Deutsch" }],
 //   "output": { "ios": "../ios/App/Resources", "android": "../android/app/src/main/res" },
-//   "keys": { "onboarding.title": { "de": "Willkommen!" } }
+//   "keys": {
+//     "onboarding.title": { "de": "Willkommen!" },
+//     "tasks.open": { "de": { "one": "Eine Aufgabe", "other": "#count:int Aufgaben" } }
+//   }
 // }
 //
 // `output` ist optional: Zielordner für `localize-me export`, relativ zu localize.json.
+// Plurals (siehe plurals.js): Hat eine Sprache Formen, wird der ganze Key zum Plural.
 
 export const KEY_PATTERN = /^[A-Za-z0-9_.\-]+$/;
 export const LANG_PATTERN = /^[a-z]{2,3}([-_][A-Za-z0-9]{2,4})?$/;
@@ -33,10 +38,19 @@ export function normalize(data) {
   const keys = {};
   for (const name of Object.keys(data?.keys || {}).sort((a, b) => a.localeCompare(b))) {
     const values = data.keys[name] || {};
+    const plural = isPluralKey(values);
     keys[name] = {};
     for (const code of Object.keys(values).sort()) {
-      if (typeof values[code] === "string") keys[name][code] = values[code];
+      const value = values[code];
+      if (!plural) {
+        if (typeof value === "string") keys[name][code] = value;
+        continue;
+      }
+      const forms = normalizeForms(isPluralValue(value) ? value : typeof value === "string" && value ? { other: value } : {});
+      // Leere Formen nur in der Basissprache behalten, damit der Key ein Plural bleibt.
+      if (Object.keys(forms).length || code === base) keys[name][code] = forms;
     }
+    if (plural && !isPluralKey(keys[name])) keys[name][base] = {};
   }
   const output = {};
   for (const platform of ["ios", "android"]) {
@@ -44,6 +58,13 @@ export function normalize(data) {
     if (typeof dir === "string" && dir.trim()) output[platform] = dir.trim();
   }
   return Object.keys(output).length ? { base, languages, output, keys } : { base, languages, keys };
+}
+
+/** Nur bekannte Pluralformen mit Text, in fester Reihenfolge. */
+function normalizeForms(value) {
+  const forms = {};
+  for (const c of CATEGORIES) if (typeof value[c] === "string" && value[c] !== "") forms[c] = value[c];
+  return forms;
 }
 
 export function serialize(project) {
@@ -98,12 +119,15 @@ export class Store {
 
   // ---------- Änderungen ----------
 
-  addKey(name, values = {}) {
+  addKey(name, values = {}, { plural = false } = {}) {
     name = String(name || "").trim();
     if (!name) throw new ValidationError("Gib einen Key ein, zum Beispiel settings.title.");
     if (!KEY_PATTERN.test(name)) throw new ValidationError("Keys dürfen nur Buchstaben, Ziffern, Punkt, Unterstrich und Bindestrich enthalten.");
     if (this.project.keys[name]) throw new ValidationError(`„${name}“ gibt es schon.`);
     this.project.keys[name] = this.#cleanValues(values);
+    if (plural) this.project.keys[name] = Object.fromEntries(
+      Object.entries(this.project.keys[name]).map(([code, v]) => [code, isPluralValue(v) ? v : { other: v }]));
+    if (plural && !this.project.keys[name][this.project.base]) this.project.keys[name][this.project.base] = {};
     this.save();
   }
 
@@ -118,11 +142,35 @@ export class Store {
     this.save();
   }
 
-  setValue(name, lang, value) {
+  /** Setzt einen Text. Bei Plural-Keys gehört `form` dazu (one, other, …). */
+  setValue(name, lang, value, form) {
     this.#requireKey(name);
     if (typeof value !== "string") throw new ValidationError("Der Text muss eine Zeichenkette sein.");
-    if (value === "") delete this.project.keys[name][lang];
-    else this.project.keys[name][lang] = value;
+    const values = this.project.keys[name];
+    if (isPluralKey(values)) {
+      if (!CATEGORIES.includes(form)) throw new ValidationError(`„${name}“ ist ein Plural – gib die Form an (${CATEGORIES.join(", ")}).`);
+      const forms = isPluralValue(values[lang]) ? values[lang] : (values[lang] = {});
+      if (value === "") delete forms[form];
+      else forms[form] = value;
+    } else {
+      if (form) throw new ValidationError(`„${name}“ ist kein Plural.`);
+      if (value === "") delete values[lang];
+      else values[lang] = value;
+    }
+    this.save();
+  }
+
+  /** Macht aus einem Text einen Plural (Text wird zur Form „other“) oder umgekehrt (Form „other“ bleibt). */
+  setPlural(name, plural) {
+    this.#requireKey(name);
+    const values = this.project.keys[name];
+    if (isPluralKey(values) === !!plural) return;
+    for (const code of Object.keys(values)) {
+      if (plural) values[code] = values[code] ? { other: values[code] } : {};
+      else if (values[code].other) values[code] = values[code].other;
+      else delete values[code];
+    }
+    if (plural && !values[this.project.base]) values[this.project.base] = {};
     this.save();
   }
 
@@ -165,6 +213,7 @@ export class Store {
     const out = {};
     for (const [code, v] of Object.entries(values || {})) {
       if (typeof v === "string" && v !== "") out[code] = v;
+      else if (isPluralValue(v)) out[code] = normalizeForms(v);
     }
     return out;
   }

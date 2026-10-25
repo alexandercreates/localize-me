@@ -1,11 +1,13 @@
 import fs from "node:fs";
 import path from "node:path";
-import { convert, specOf } from "./placeholders.js";
+import { convert, parse, specOf } from "./placeholders.js";
+import { categoriesFor, countOf, isPluralKey, isPluralValue } from "./plurals.js";
 
 // Native Ressourcen-Dateien direkt fürs App-Projekt:
 //
 //   iOS      <ziel>/<sprache>.lproj/Localizable.strings
-//   Android  <ziel>/values[-<sprache>]/strings.xml   (Basissprache in values/)
+//            <ziel>/<sprache>.lproj/Localizable.stringsdict   (nur wenn es Plurals gibt)
+//   Android  <ziel>/values[-<sprache>]/strings.xml   (Basissprache in values/, Plurals als <plurals>)
 //
 // Fehlende Übersetzungen fehlen auch in der Datei, damit die Plattform auf die Basissprache zurückfällt.
 
@@ -22,6 +24,30 @@ function sortedKeys(project) {
   return Object.keys(project.keys).sort((a, b) => a.localeCompare(b));
 }
 
+const pluralKeys = (project) => sortedKeys(project).filter((k) => isPluralKey(project.keys[k]));
+
+/**
+ * Pluralformen eines Keys für eine Sprache, fertig umgewandelt, oder null, wenn die Sprache ausgelassen wird.
+ * Ohne Form „other“ fällt die Plattform auf die Basissprache zurück; ein Basistext ohne other wird ganz ausgelassen.
+ */
+function pluralEntry(project, key, lang, platform) {
+  const values = project.keys[key];
+  const baseOther = values[project.base]?.other || "";
+  const forms = isPluralValue(values[lang]) ? values[lang] : {};
+  if (!baseOther.trim() || !forms.other) return null;
+  const count = countOf(values[project.base]);
+  if (!count) throw new Error(`„${key}“ ist ein Plural ohne Zahl – schreib in die Form „andere“ einen Platzhalter wie #count:int.`);
+  const spec = specOf(baseOther).list;
+  // In Plurals wird jede Form formatiert – ein % ohne Platzhalter muss also auch %% werden.
+  const items = categoriesFor(lang)
+    .filter((c) => forms[c])
+    .map((c) => {
+      const text = convert(forms[c], platform, baseOther);
+      return [c, parse(forms[c]).length ? text : text.replace(/%/g, "%%")];
+    });
+  return { items, count, index: spec.findIndex((p) => p.name === count) + 1, positional: spec.length > 1 };
+}
+
 // ---------- iOS ----------
 
 export function lprojName(code) {
@@ -36,10 +62,45 @@ export function buildIosStrings(project, lang) {
   const lines = [`/* ${HEADER} */`, ""];
   for (const key of sortedKeys(project)) {
     const values = project.keys[key];
+    if (isPluralKey(values)) continue;
     const text = values[lang];
     if (!text && lang !== project.base) continue;
     lines.push(`"${escapeStrings(key)}" = "${escapeStrings(convert(text || "", "ios", values[project.base] || ""))}";`);
   }
+  return lines.join("\n") + "\n";
+}
+
+const escapePlist = (text) => text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+/** Plurals als Localizable.stringsdict. Im Code wie gewohnt: String(format: NSLocalizedString(key), count, …). */
+export function buildIosStringsdict(project, lang) {
+  const lines = [
+    '<?xml version="1.0" encoding="UTF-8"?>',
+    '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">',
+    `<!-- ${HEADER} -->`,
+    '<plist version="1.0">',
+    "<dict>",
+  ];
+  for (const key of pluralKeys(project)) {
+    const entry = pluralEntry(project, key, lang, "ios");
+    if (!entry) continue;
+    lines.push(
+      `\t<key>${escapePlist(key)}</key>`,
+      "\t<dict>",
+      "\t\t<key>NSStringLocalizedFormatKey</key>",
+      `\t\t<string>%${entry.positional ? entry.index + "$" : ""}#@${entry.count}@</string>`,
+      `\t\t<key>${entry.count}</key>`,
+      "\t\t<dict>",
+      "\t\t\t<key>NSStringFormatSpecTypeKey</key>",
+      "\t\t\t<string>NSStringPluralRuleType</string>",
+      "\t\t\t<key>NSStringFormatValueTypeKey</key>",
+      "\t\t\t<string>lld</string>",
+      ...entry.items.flatMap(([c, text]) => [`\t\t\t<key>${c}</key>`, `\t\t\t<string>${escapePlist(text)}</string>`]),
+      "\t\t</dict>",
+      "\t</dict>",
+    );
+  }
+  lines.push("</dict>", "</plist>");
   return lines.join("\n") + "\n";
 }
 
@@ -87,6 +148,14 @@ export function buildAndroidXml(project, lang) {
   const lines = ['<?xml version="1.0" encoding="utf-8"?>', `<!-- ${HEADER} -->`, "<resources>"];
   for (const key of sortedKeys(project)) {
     const values = project.keys[key];
+    if (isPluralKey(values)) {
+      const entry = pluralEntry(project, key, lang, "android");
+      if (!entry) continue;
+      lines.push(`    <plurals name="${resourceName(key)}">`);
+      for (const [c, text] of entry.items) lines.push(`        <item quantity="${c}">${escapeXml(text)}</item>`);
+      lines.push("    </plurals>");
+      continue;
+    }
     const text = values[lang];
     if (!text && lang !== project.base) continue;
     const baseText = values[project.base] || "";
@@ -104,7 +173,11 @@ export function buildAndroidXml(project, lang) {
 /** Dateien einer Plattform als [{ path (relativ zum Ziel), content }]. */
 export function nativeFiles(project, platform) {
   if (platform === "ios") {
-    return languageOrder(project).map((code) => ({ path: path.join(lprojName(code), "Localizable.strings"), content: buildIosStrings(project, code) }));
+    const plurals = pluralKeys(project).length > 0;
+    return languageOrder(project).flatMap((code) => [
+      { path: path.join(lprojName(code), "Localizable.strings"), content: buildIosStrings(project, code) },
+      ...(plurals ? [{ path: path.join(lprojName(code), "Localizable.stringsdict"), content: buildIosStringsdict(project, code) }] : []),
+    ]);
   }
   if (platform === "android") {
     const problems = checkAndroidNames(project);

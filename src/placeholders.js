@@ -68,8 +68,11 @@ export function convert(text, platform, baseText = text) {
   });
 }
 
-/** Prüft eine Übersetzung gegen den Basistext. Liefert eine Liste lesbarer Probleme. */
-export function check(baseText, text) {
+/**
+ * Prüft eine Übersetzung gegen den Basistext. Liefert eine Liste lesbarer Probleme.
+ * `optional`: Platzhalter, die fehlen dürfen (z. B. die Zahl in „Eine Aufgabe“).
+ */
+export function check(baseText, text, { optional = [] } = {}) {
   const problems = [];
   const base = specOf(baseText);
   if (base.conflict) problems.push(`#${base.conflict} hat im Basistext zwei verschiedene Typen`);
@@ -77,7 +80,7 @@ export function check(baseText, text) {
 
   const target = specOf(text).list;
   const has = (list, n) => list.some((p) => p.name === n);
-  const missing = base.list.filter((p) => !has(target, p.name)).map((p) => "#" + p.name);
+  const missing = base.list.filter((p) => !has(target, p.name) && !optional.includes(p.name)).map((p) => "#" + p.name);
   const extra = target.filter((p) => !has(base.list, p.name)).map((p) => "#" + p.name);
   const typed = target
     .filter((q) => {

@@ -10,6 +10,7 @@ import { buildCsv, csvFilename } from "../src/csv.js";
 import { PLATFORMS } from "../src/placeholders.js";
 import { NATIVE_PLATFORMS, configuredOutputs, writeNative } from "../src/native.js";
 import { addScripts } from "../src/project.js";
+import { isPluralValue } from "../src/plurals.js";
 
 const pkg = JSON.parse(fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "package.json"), "utf8"));
 
@@ -126,7 +127,10 @@ function exportNative(project, outputs) {
   if (!platforms.length) fail('Kein Ziel: --platform ios|android und --out <ordner> angeben oder "output" in localize.json eintragen.');
   if (opts.out && platforms.length > 1) fail("--out braucht --platform, weil jede Plattform einen eigenen Ordner hat.");
 
-  const empty = Object.keys(project.keys).filter((k) => !(project.keys[k][project.base] || "").trim());
+  const empty = Object.keys(project.keys).filter((k) => {
+    const value = project.keys[k][project.base];
+    return !((isPluralValue(value) ? value.other : value) || "").trim();
+  });
   if (empty.length) console.warn(`localize-me: ${empty.length} Keys ohne Text in der Basissprache ${project.base}: ${empty.slice(0, 5).join(", ")}${empty.length > 5 ? " …" : ""}`);
 
   for (const platform of platforms) {

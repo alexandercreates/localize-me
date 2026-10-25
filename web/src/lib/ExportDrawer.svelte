@@ -1,5 +1,6 @@
 <script>
   import { buildCsv, csvFilename } from "@shared/csv.js";
+  import { isFilled, isPluralKey } from "@shared/plurals.js";
   import { app, prefs } from "./model.svelte.js";
   import { printfSegments } from "./tokens.js";
   import Icon from "./ui/Icon.svelte";
@@ -29,10 +30,11 @@
   const langs = $derived(scope === "pair" && app.target ? [app.base, app.target] : allLangs);
   const filename = $derived(csvFilename(langs, platform));
   const lines = $derived(app.project ? buildCsv(app.project, { platform, languages: langs, delimiter, bom: false }).trimEnd().split("\r\n") : []);
-  const missing = $derived(langs.slice(1).reduce((n, code) => n + app.keyNames.filter((k) => !(app.project.keys[k][code] || "").trim()).length, 0));
+  const missing = $derived(langs.slice(1).reduce((n, code) => n + app.keyNames.filter((k) => !isFilled(app.project.keys[k][code])).length, 0));
   const href = $derived("/api/export?" + new URLSearchParams({ platform, delimiter, langs: langs.join(",") }));
   // Zielordner aus "output" in localize.json – dann schreibt der Server die Dateien direkt ins App-Projekt.
   const outputs = $derived(Object.entries(app.project?.output ?? {}));
+  const hasPlurals = $derived(app.keyNames.some((k) => isPluralKey(app.project.keys[k])));
   let writing = $state(false);
 
   async function writeNative() {
@@ -87,7 +89,7 @@
               <li>
                 <Icon name={platform === "ios" ? "apple" : "android"} size={16} />
                 <span class="mono">{dir}</span>
-                <span class="kind">{platform === "ios" ? "Localizable.strings" : "strings.xml"}</span>
+                <span class="kind">{platform === "ios" ? (hasPlurals ? "Localizable.strings + .stringsdict" : "Localizable.strings") : "strings.xml"}</span>
               </li>
             {/each}
           </ul>

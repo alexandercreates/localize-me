@@ -1,4 +1,5 @@
 import { check } from "@shared/placeholders.js";
+import { checkPlural, isFilled, isPluralKey, isPluralValue, textOf } from "@shared/plurals.js";
 
 // Einstellungen pro Browser (Zielsprache, Export-Optionen). Fehlt localStorage, gelten die Standards.
 export const prefs = {
@@ -29,15 +30,27 @@ class Model {
   target = $derived(this.others.some((l) => l.code === this.chosenTarget) ? this.chosenTarget : (this.others[0]?.code ?? ""));
   keyNames = $derived(this.project ? Object.keys(this.project.keys).sort((a, b) => a.localeCompare(b)) : []);
 
+  // Bei Plurals sind `base`/`target` die Form „other“ (für Vorschau), `baseForms`/`targetForms` alle Formen.
   rows = $derived(this.keyNames.map((key) => {
     const values = this.project.keys[key];
-    const base = values[this.base] || "";
-    const target = this.target ? values[this.target] || "" : "";
-    const baseProblems = check(base, "");
-    const problems = this.target && target.trim() ? check(base, target).filter((p) => !baseProblems.includes(p)) : [];
+    const plural = isPluralKey(values);
+    const base = textOf(values[this.base]);
+    const target = this.target ? textOf(values[this.target]) : "";
+    const filled = this.target && isFilled(values[this.target]);
+    let baseProblems, problems;
+    if (plural) {
+      const baseForms = isPluralValue(values[this.base]) ? values[this.base] : {};
+      baseProblems = checkPlural(baseForms, undefined, this.base, { isBase: true });
+      problems = filled ? checkPlural(baseForms, values[this.target], this.target) : [];
+    } else {
+      baseProblems = check(base, "");
+      problems = filled ? check(base, target).filter((p) => !baseProblems.includes(p)) : [];
+    }
     let status = "base";
-    if (this.target) status = !target.trim() ? "missing" : problems.length ? "review" : "done";
-    return { key, values, base, target, baseProblems, problems, status, ns: namespaceOf(key) };
+    if (this.target) status = !filled ? "missing" : problems.length ? "review" : "done";
+    const forms = (code) => (isPluralValue(values[code]) ? Object.values(values[code]) : [values[code] || ""]);
+    const searchText = [...forms(this.base), ...(this.target ? forms(this.target) : [])].join("\n").toLowerCase();
+    return { key, values, plural, base, target, baseProblems, problems, status, searchText, ns: namespaceOf(key) };
   }));
 
   namespaces = $derived.by(() => {
@@ -51,7 +64,7 @@ class Model {
     const q = this.search.trim().toLowerCase();
     return this.rows.filter((r) =>
       (this.namespace === null || r.ns === this.namespace) &&
-      (!q || r.key.toLowerCase().includes(q) || r.base.toLowerCase().includes(q) || r.target.toLowerCase().includes(q)));
+      (!q || r.key.toLowerCase().includes(q) || r.searchText.includes(q)));
   });
   counts = $derived(countStatus(this.scoped));
   totals = $derived(countStatus(this.rows));
@@ -63,7 +76,7 @@ class Model {
 
   progress(code) {
     const total = this.keyNames.length;
-    const done = this.keyNames.filter((k) => (this.project.keys[k][code] || "").trim()).length;
+    const done = this.keyNames.filter((k) => isFilled(this.project.keys[k][code])).length;
     return { done, total, ratio: total ? done / total : 0 };
   }
 

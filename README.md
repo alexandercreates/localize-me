@@ -49,6 +49,28 @@ Hallo #name, schön dich zu sehen
 - **Prozentzeichen** werden zu `%%`, sobald ein Text Platzhalter enthält.
 - Die Oberfläche warnt bei fehlenden, zusätzlichen oder abweichend typisierten Platzhaltern.
 
+## Plurals
+
+Für Texte, die von einer Anzahl abhängen („Eine Aufgabe“ / „3 Aufgaben“), setzt du beim Anlegen das Häkchen **Plural** oder klickst bei einem bestehenden Key auf **Plural**. Dann gibt es pro Sprache genau die Formen, die sie braucht: Deutsch und Englisch `one` + `other`, Französisch zusätzlich `many`, Russisch `one`, `few`, `many`, `other` (Regeln aus CLDR).
+
+```json
+"tasks.open": {
+  "de": { "one": "Eine offene Aufgabe", "other": "#count:int offene Aufgaben" },
+  "en": { "one": "One open task", "other": "#count open tasks" }
+}
+```
+
+- Die Zahl, nach der sich die Form richtet, ist der erste `:int`-Platzhalter in der Form `other` des Basistextes. Die übrigen Formen dürfen ihn weglassen („Eine offene Aufgabe“).
+- Weitere Platzhalter gehen wie gewohnt: `#name hat #count:int Plätze`.
+- Fehlende Formen und Platzhalter zeigt die Oberfläche als **Prüfen** an. Ohne Form `other` fehlt die Übersetzung in der exportierten Datei, die App zeigt dann die Basissprache.
+
+| Plattform | Datei                                         | Im Code                                                        |
+| --------- | --------------------------------------------- | -------------------------------------------------------------- |
+| iOS       | `<sprache>.lproj/Localizable.stringsdict`     | `String(format: NSLocalizedString("tasks.open", comment: ""), count)` |
+| Android   | `<plurals>` in `strings.xml`                  | `pluralStringResource(R.plurals.tasks_open, count, count)`     |
+
+Unter Android übergibst du die Zahl zweimal: einmal für die Wahl der Form, einmal für den Platzhalter. In der CSV bekommt jede Form eine eigene Zeile (`tasks.open[one]`, `tasks.open[other]`).
+
 ## Export
 
 ### Direkt ins App-Projekt

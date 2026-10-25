@@ -174,19 +174,20 @@ export function createServer({ file, uiDir = UI_DIR }) {
         return send(res, 200, { files });
       }
 
-      // POST /api/keys {key, values}
+      // POST /api/keys {key, values, plural?}
       if (method === "POST" && parts[1] === "keys" && parts.length === 2) {
         const body = await readJson(req);
-        store.addKey(body.key, body.values);
+        store.addKey(body.key, body.values, { plural: body.plural === true });
         broadcast("change");
         return send(res, 201, projectPayload());
       }
 
-      // PATCH /api/keys/:key {lang, value} | {rename}
+      // PATCH /api/keys/:key {lang, value, form?} | {rename} | {plural}
       if (method === "PATCH" && parts[1] === "keys" && parts.length === 3) {
         const body = await readJson(req);
         if (typeof body.rename === "string") store.renameKey(parts[2], body.rename);
-        else store.setValue(parts[2], String(body.lang || ""), body.value);
+        else if (typeof body.plural === "boolean") store.setPlural(parts[2], body.plural);
+        else store.setValue(parts[2], String(body.lang || ""), body.value, body.form || undefined);
         broadcast("change");
         return send(res, 200, projectPayload());
       }

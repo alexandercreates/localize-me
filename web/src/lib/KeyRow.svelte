@@ -1,5 +1,6 @@
 <script>
   import { convert } from "@shared/placeholders.js";
+  import { CATEGORY_LABELS, categoriesFor } from "@shared/plurals.js";
   import { app, keyUrl } from "./model.svelte.js";
   import { printfSegments, hasTokens } from "./tokens.js";
   import TokenField from "./ui/TokenField.svelte";
@@ -27,18 +28,65 @@
     await app.run("DELETE", keyUrl(row.key), null, `„${row.key}“ gelöscht.`);
   }
 
-  const save = (lang) => (value) => app.run("PATCH", keyUrl(row.key), { lang, value });
+  const save = (lang, form) => (value) => app.run("PATCH", keyUrl(row.key), { lang, value, form });
   const rename = (next) => app.mutate("PATCH", keyUrl(row.key), { rename: next });
+
+  // Zurück zum einfachen Text behält nur die Form „other“ – gehen dabei Formen verloren, erst nachfragen.
+  const formsLost = $derived(row.plural && Object.values(row.values).some((forms) => Object.keys(forms).some((c) => c !== "other")));
+  let pluralArmed = $state(false);
+  let pluralDisarm;
+  async function togglePlural() {
+    if (row.plural && formsLost && !pluralArmed) {
+      pluralArmed = true;
+      pluralDisarm = setTimeout(() => (pluralArmed = false), 3000);
+      return;
+    }
+    clearTimeout(pluralDisarm);
+    pluralArmed = false;
+    await app.run("PATCH", keyUrl(row.key), { plural: !row.plural });
+  }
 </script>
+
+{#snippet forms(lang, kind)}
+  {@const values = row.values[lang] || {}}
+  <div class="forms">
+    {#each categoriesFor(lang) as c (c)}
+      <div class="form">
+        <span class="form-label" title={`CLDR-Kategorie ${c}`}>{CATEGORY_LABELS[c]} <span class="mono">{c}</span></span>
+        <TokenField
+          value={values[c] || ""}
+          tone={kind === "target" ? (values[c] ? (row.status === "review" ? "review" : "filled") : "missing") : "plain"}
+          label={`${row.key}, Form ${c}: ${kind === "target" ? "Übersetzung in" : "Text in"} ${app.langName(lang)}`}
+          placeholder={kind === "target" ? "Fehlt – hier tippen" : c === "other" ? "#count:int …" : "Fehlt"}
+          onsave={save(lang, c)}
+        />
+      </div>
+    {/each}
+  </div>
+{/snippet}
 
 <div class={["row", row.status]} role="row" data-key={row.key}>
   <div class="cell key" role="cell">
     <KeyName name={row.key} onrename={rename} />
+    <button
+      type="button"
+      class={["plural-toggle", row.plural && "on", pluralArmed && "armed"]}
+      aria-pressed={row.plural}
+      title={row.plural ? "Wieder ein einfacher Text (behält die Form „andere“)" : "Text je nach Anzahl (eins, andere, …)"}
+      onclick={togglePlural}
+      onblur={() => (pluralArmed = false)}
+    >
+      {pluralArmed ? "Formen verwerfen?" : "Plural"}
+    </button>
   </div>
 
   <div class="cell base" role="cell">
     <span class="mobile-label label">{app.langName(app.base)}</span>
-    <TokenField value={row.base} label={`${row.key}: Text in ${app.langName(app.base)}`} placeholder="Basistext fehlt" onsave={save(app.base)} />
+    {#if row.plural}
+      {@render forms(app.base, "base")}
+    {:else}
+      <TokenField value={row.base} label={`${row.key}: Text in ${app.langName(app.base)}`} placeholder="Basistext fehlt" onsave={save(app.base)} />
+    {/if}
     {#if previews.length}
       <dl class="preview">
         {#each previews as [platform, text]}
@@ -53,13 +101,17 @@
   {#if app.target}
     <div class="cell target" role="cell">
       <span class="mobile-label label">{app.langName(app.target)}</span>
-      <TokenField
-        value={row.target}
-        tone={targetTone}
-        label={`${row.key}: Übersetzung in ${app.langName(app.target)}`}
-        placeholder="Übersetzung fehlt – hier tippen"
-        onsave={save(app.target)}
-      />
+      {#if row.plural}
+        {@render forms(app.target, "target")}
+      {:else}
+        <TokenField
+          value={row.target}
+          tone={targetTone}
+          label={`${row.key}: Übersetzung in ${app.langName(app.target)}`}
+          placeholder="Übersetzung fehlt – hier tippen"
+          onsave={save(app.target)}
+        />
+      {/if}
       {#each row.problems as p}<p class="warn"><Icon name="alert" size={14} />{p}</p>{/each}
     </div>
     <div class="cell status" role="cell"><StatusBadge status={row.status} /></div>
@@ -89,10 +141,26 @@
   }
   .row:last-child { border-bottom: 0; }
   .cell { min-width: 0; }
-  .key { padding-left: 0; }
+  .key { padding-left: 0; display: flex; flex-direction: column; align-items: flex-start; }
   .status { padding-top: 9px; }
   .actions { padding-top: 4px; display: flex; justify-content: flex-end; }
   .mobile-label { display: none; }
+
+  .plural-toggle {
+    margin: 4px 0 0 10px; padding: 1px 8px; border: 1px solid var(--border); border-radius: var(--radius-full);
+    background: transparent; color: var(--text-subtle); font-size: 12px; line-height: 18px; font-weight: 500;
+  }
+  .plural-toggle:hover { border-color: var(--border-strong); color: var(--text); }
+  .plural-toggle.on { background: var(--token-soft); border-color: transparent; color: var(--token); }
+  .plural-toggle.armed { background: var(--danger-soft); border-color: var(--danger); color: var(--danger); }
+  /* Bei normalen Keys erst beim Überfahren zeigen, damit lange Listen ruhig bleiben. */
+  @media (hover: hover) {
+    .row:not(:hover):not(:focus-within) .plural-toggle:not(.on) { visibility: hidden; }
+  }
+
+  .forms { display: flex; flex-direction: column; gap: 4px; }
+  .form-label { display: block; margin: 2px 10px 0; font-size: 12px; line-height: 16px; color: var(--text-muted); }
+  .form-label .mono { color: var(--text-subtle); }
 
   .preview {
     display: grid; grid-template-columns: auto 1fr; gap: 2px 10px;

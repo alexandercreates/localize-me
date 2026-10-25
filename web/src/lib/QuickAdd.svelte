@@ -6,6 +6,7 @@
 
   let key = $state("");
   let text = $state("");
+  let plural = $state(false);
   let error = $state("");
   let busy = $state(false);
 
@@ -13,11 +14,12 @@
     e.preventDefault();
     const name = key.trim();
     busy = true;
-    error = (await app.mutate("POST", "/api/keys", { key: name, values: { [app.base]: text } })) || "";
+    error = (await app.mutate("POST", "/api/keys", { key: name, values: { [app.base]: text }, plural })) || "";
     busy = false;
     if (error) return;
     app.notify(`„${name}“ angelegt.`);
     key = text = "";
+    plural = false;
     keyInput?.focus();
   }
 </script>
@@ -39,8 +41,11 @@
       />
     </label>
     <label class="field">
-      <span class="label">Text ({app.langName(app.base)})</span>
-      <input bind:value={text} placeholder="Willkommen!" autocomplete="off" />
+      <span class="label">Text ({app.langName(app.base)}){plural ? " · Form „andere“" : ""}</span>
+      <input bind:value={text} placeholder={plural ? "#count:int offene Aufgaben" : "Willkommen!"} autocomplete="off" />
+    </label>
+    <label class="check" title="Text hängt von einer Anzahl ab: „Eine Aufgabe“ / „3 Aufgaben“">
+      <input type="checkbox" bind:checked={plural} />Plural
     </label>
     <Button type="submit" variant="inverse" icon="plus" disabled={busy}>Key anlegen</Button>
   </div>
@@ -53,7 +58,7 @@
     <span class="item"><span class="tok">#anzahl<span class="type">:int</span></span> ganze Zahl</span>
     <span class="item"><span class="tok">#preis<span class="type">:float</span></span> Kommazahl</span>
     <span class="item"><span class="tok">##</span> echtes #</span>
-    <span class="subtle">→ beim Export automatisch zu %@ / %s</span>
+    <span class="subtle">→ beim Export automatisch zu %@ / %s · Plural: Formen je Sprache, Zahl über #count:int</span>
   </p>
 </form>
 
@@ -63,9 +68,14 @@
     padding: var(--space-20); border-radius: var(--radius-xl);
     background: var(--bg-surface); border: 1px solid var(--border); box-shadow: var(--shadow-card);
   }
-  .row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; gap: var(--space-12); align-items: end; }
+  .row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto auto; gap: var(--space-12); align-items: end; }
+  .check {
+    display: inline-flex; align-items: center; gap: 6px; height: 40px;
+    font-size: 13px; line-height: 18px; font-weight: 500; color: var(--text-muted); white-space: nowrap;
+  }
+  .check input { width: 16px; height: 16px; margin: 0; accent-color: var(--token); }
   .field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
-  input {
+  .field input {
     width: 100%; height: 40px; padding: 0 12px;
     border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--bg-surface); color: var(--text);
   }
