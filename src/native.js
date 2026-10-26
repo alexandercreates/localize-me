@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { convert, parse, specOf } from "./placeholders.js";
-import { resourceName } from "./names.js";
+import { exportsTo, resourceName } from "./platforms.js";
 import { categoriesFor, countOf, isPluralKey, isPluralValue } from "./plurals.js";
 import { LANG_PATTERN } from "./store.js";
 
@@ -12,6 +12,7 @@ import { LANG_PATTERN } from "./store.js";
 //   Android  <ziel>/values[-<sprache>]/strings.xml   (Basissprache in values/, Plurals als <plurals>)
 //
 // Fehlende Übersetzungen fehlen auch in der Datei, damit die Plattform auf die Basissprache zurückfällt.
+// Keys, die nur für die andere Plattform gedacht sind ("only"), fehlen ganz.
 
 export const NATIVE_PLATFORMS = ["ios", "android"];
 
@@ -22,11 +23,12 @@ function languageOrder(project) {
   return [project.base, ...project.languages.map((l) => l.code).filter((c) => c !== project.base)];
 }
 
-function sortedKeys(project) {
-  return Object.keys(project.keys).sort((a, b) => a.localeCompare(b));
+/** Keys einer Plattform, alphabetisch. */
+function sortedKeys(project, platform) {
+  return Object.keys(project.keys).filter((k) => exportsTo(project, k, platform)).sort((a, b) => a.localeCompare(b));
 }
 
-const pluralKeys = (project) => sortedKeys(project).filter((k) => isPluralKey(project.keys[k]));
+const pluralKeys = (project, platform) => sortedKeys(project, platform).filter((k) => isPluralKey(project.keys[k]));
 
 /**
  * Pluralformen eines Keys für eine Sprache, fertig umgewandelt, oder null, wenn die Sprache ausgelassen wird.
@@ -62,7 +64,7 @@ function escapeStrings(text) {
 
 export function buildIosStrings(project, lang) {
   const lines = [`/* ${HEADER} */`, ""];
-  for (const key of sortedKeys(project)) {
+  for (const key of sortedKeys(project, "ios")) {
     const values = project.keys[key];
     if (isPluralKey(values)) continue;
     const text = values[lang];
@@ -83,7 +85,7 @@ export function buildIosStringsdict(project, lang) {
     '<plist version="1.0">',
     "<dict>",
   ];
-  for (const key of pluralKeys(project)) {
+  for (const key of pluralKeys(project, "ios")) {
     const entry = pluralEntry(project, key, lang, "ios");
     if (!entry) continue;
     lines.push(
@@ -132,7 +134,7 @@ function escapeXml(text) {
 export function checkAndroidNames(project) {
   const seen = new Map();
   const problems = [];
-  for (const key of sortedKeys(project)) {
+  for (const key of sortedKeys(project, "android")) {
     const name = resourceName(key);
     if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) problems.push(`„${key}“ ergibt keinen gültigen Android-Namen (darf nicht mit einer Ziffer beginnen).`);
     else if (seen.has(name)) problems.push(`„${seen.get(name)}“ und „${key}“ ergeben beide ${name}.`);
@@ -143,7 +145,7 @@ export function checkAndroidNames(project) {
 
 export function buildAndroidXml(project, lang) {
   const lines = ['<?xml version="1.0" encoding="utf-8"?>', `<!-- ${HEADER} -->`, "<resources>"];
-  for (const key of sortedKeys(project)) {
+  for (const key of sortedKeys(project, "android")) {
     const values = project.keys[key];
     if (isPluralKey(values)) {
       const entry = pluralEntry(project, key, lang, "android");
@@ -173,7 +175,7 @@ export function nativeFiles(project, platform) {
   const invalid = project.languages.map((l) => l.code).filter((c) => !LANG_PATTERN.test(c));
   if (invalid.length) throw new Error(`Ungültige Sprachcodes in localize.json: ${invalid.join(", ")} (erlaubt z. B. en, pt-BR, zh-Hans).`);
   if (platform === "ios") {
-    const plurals = pluralKeys(project).length > 0;
+    const plurals = pluralKeys(project, "ios").length > 0;
     return languageOrder(project).flatMap((code) => [
       { path: path.join(lprojName(code), "Localizable.strings"), content: buildIosStrings(project, code) },
       ...(plurals ? [{ path: path.join(lprojName(code), "Localizable.stringsdict"), content: buildIosStringsdict(project, code) }] : []),

@@ -1,7 +1,7 @@
 <script>
   import { convert } from "@shared/placeholders.js";
   import { CATEGORY_LABELS, categoriesFor, countCandidates, countOf, withCount } from "@shared/plurals.js";
-  import { app, keyUrl } from "./model.svelte.js";
+  import { app, keyUrl, ONLY_LABELS } from "./model.svelte.js";
   import { printfSegments, hasTokens } from "./tokens.js";
   import TokenField from "./ui/TokenField.svelte";
   import KeyName from "./ui/KeyName.svelte";
@@ -11,9 +11,9 @@
   let { row } = $props();
 
   const previews = $derived(hasTokens(row.base) ? [
-    ["iOS", convert(row.base, "ios", row.base)],
-    ["Android", convert(row.base, "android", row.base)],
-  ] : []);
+    ["iOS", convert(row.base, "ios", row.base), "ios"],
+    ["Android", convert(row.base, "android", row.base), "android"],
+  ].filter(([, , p]) => !row.only || row.only === p) : []);
   const targetTone = $derived(row.status === "missing" ? "missing" : row.status === "review" ? "review" : "filled");
 
   let armed = $state(false);
@@ -30,6 +30,7 @@
 
   const save = (lang, form) => (value) => app.run("PATCH", keyUrl(row.key), { lang, value, form });
   const rename = (next) => app.mutate("PATCH", keyUrl(row.key), { rename: next });
+  const chooseOnly = (e) => app.run("PATCH", keyUrl(row.key), { only: e.currentTarget.value });
 
   // Bei mehreren Zahlen wählen, nach welcher sich die Form richtet („3 von 1 Platz“ → #required).
   const baseForms = $derived(row.plural ? row.values[app.base] || {} : {});
@@ -83,6 +84,15 @@
     >
       {pluralArmed ? "Formen verwerfen?" : "Plural"}
     </button>
+    <select
+      class={["only-pick", row.only && "on"]}
+      value={row.only}
+      aria-label={`${row.key}: Plattform`}
+      title="Für welche App der Text exportiert wird"
+      onchange={chooseOnly}
+    >
+      {#each Object.entries(ONLY_LABELS) as [value, label]}<option {value}>{label}</option>{/each}
+    </select>
   </div>
 
   <div class="cell base" role="cell">
@@ -167,8 +177,17 @@
   .plural-toggle.on { background: var(--token-soft); border-color: transparent; color: var(--token); }
   .plural-toggle.armed { background: var(--danger-soft); border-color: var(--danger); color: var(--danger); }
   /* Bei normalen Keys erst beim Überfahren zeigen, damit lange Listen ruhig bleiben. */
+  .only-pick {
+    margin: 4px 0 0 10px; padding: 1px 8px; border: 1px solid var(--border); border-radius: var(--radius-full);
+    background: transparent; color: var(--text-subtle); font-size: 12px; line-height: 18px; font-weight: 500;
+    appearance: none; cursor: pointer;
+  }
+  .only-pick:hover { border-color: var(--border-strong); color: var(--text); }
+  .only-pick:focus-visible { outline: none; border-color: var(--text); box-shadow: var(--ring); }
+  .only-pick.on { background: var(--token-soft); border-color: transparent; color: var(--token); }
   @media (hover: hover) {
-    .row:not(:hover):not(:focus-within) .plural-toggle:not(.on) { visibility: hidden; }
+    .row:not(:hover):not(:focus-within) .plural-toggle:not(.on),
+    .row:not(:hover):not(:focus-within) .only-pick:not(.on) { visibility: hidden; }
   }
 
   .count-pick {

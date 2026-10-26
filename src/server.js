@@ -237,19 +237,20 @@ export function createServer({ file, uiDir = UI_DIR, versioning = {}, host = "12
         }
       }
 
-      // POST /api/keys {key, values, plural?}
+      // POST /api/keys {key, values, plural?, only?}
       if (method === "POST" && parts[1] === "keys" && parts.length === 2) {
         const body = await readJson(req);
-        store.addKey(body.key, body.values, { plural: body.plural === true });
+        store.addKey(body.key, body.values, { plural: body.plural === true, only: body.only ?? "" });
         broadcast("change");
         return send(res, 201, projectPayload());
       }
 
-      // PATCH /api/keys/:key {lang, value, form?} | {rename} | {plural}
+      // PATCH /api/keys/:key {lang, value, form?} | {rename} | {plural} | {only: "ios"|"android"|""}
       if (method === "PATCH" && parts[1] === "keys" && parts.length === 3) {
         const body = await readJson(req);
         if (typeof body.rename === "string") store.renameKey(parts[2], body.rename);
         else if (typeof body.plural === "boolean") store.setPlural(parts[2], body.plural);
+        else if (Object.hasOwn(body, "only")) store.setOnly(parts[2], body.only);
         else store.setValue(parts[2], String(body.lang || ""), body.value, body.form || undefined);
         broadcast("change");
         return send(res, 200, projectPayload());

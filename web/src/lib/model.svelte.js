@@ -1,5 +1,6 @@
 import { check } from "@shared/placeholders.js";
 import { checkPlural, isFilled, isPluralKey, isPluralValue, textOf } from "@shared/plurals.js";
+import { onlyOf } from "@shared/platforms.js";
 
 // Einstellungen pro Browser (Zielsprache, Export-Optionen). Fehlt localStorage, gelten die Standards.
 export const prefs = {
@@ -10,6 +11,8 @@ export const prefs = {
     try { localStorage.setItem("lm." + key, value); } catch {}
   },
 };
+
+export const ONLY_LABELS = { "": "iOS + Android", ios: "Nur iOS", android: "Nur Android" };
 
 export const namespaceOf = (key) => (key.includes(".") ? key.slice(0, key.indexOf(".")) : "");
 
@@ -50,7 +53,7 @@ class Model {
     if (this.target) status = !filled ? "missing" : problems.length ? "review" : "done";
     const forms = (code) => (isPluralValue(values[code]) ? Object.values(values[code]) : [values[code] || ""]);
     const searchText = [...forms(this.base), ...(this.target ? forms(this.target) : [])].join("\n").toLowerCase();
-    return { key, values, plural, base, target, baseProblems, problems, status, searchText, ns: namespaceOf(key) };
+    return { key, values, plural, only: onlyOf(this.project, key), base, target, baseProblems, problems, status, searchText, ns: namespaceOf(key) };
   }));
 
   namespaces = $derived.by(() => {
