@@ -174,6 +174,7 @@ localize-me dev [optionen]      # bzw. npm run dev -- [optionen]
 | ------------------------ | ----------------------------------------------------------------------- | ------------------------- |
 | `--port <n>`             | Port der Oberfläche. Ist er belegt, nimmt localize-me den nächsten freien. | `4848` bzw. `$PORT`    |
 | `--host <adresse>`       | Netzwerk-Adresse. `0.0.0.0` macht die Oberfläche im Netzwerk erreichbar, siehe [Server](#im-team-auf-einem-server-docker). | `127.0.0.1` (nur dieser Rechner) |
+| `--allowed-host <namen>` | Weitere Hostnamen, kommagetrennt. Lokal nimmt localize-me nur Anfragen an `localhost` an (Schutz vor DNS-Rebinding) – hinter einem Reverse Proxy auf demselben Rechner hier dessen Namen eintragen. | – |
 | `--file <pfad>`          | Datei mit den Texten                                                    | `localize.json`           |
 | `--no-open`              | Browser nicht automatisch öffnen                                        | –                         |
 | `--commit`               | Jeder Export erzeugt einen Commit, siehe [Versionieren](#beim-export-versionieren). | –             |
@@ -356,7 +357,7 @@ Sicher das Volume dann regelmäßig per Backup, sonst gibt es keine Kopie der Te
 
 - **Persistenter Speicher:** `/data` muss ein Volume sein (bei Azure z. B. Azure Files), sonst sind die Texte nach einem Neustart oder Redeploy weg. Bei Variante B gibt es dann gar keine Kopie mehr, bei Variante A fehlen die nicht gepushten Änderungen.
 - **Neustarts:** Mit `--restart unless-stopped` (bzw. als Azure Container App oder App Service) startet der Container nach einem Absturz oder Server-Neustart von selbst wieder.
-- **Reverse Proxy:** Der Proxy muss den ursprünglichen `Host`-Header durchreichen (nginx: `proxy_set_header Host $host;`). Sonst lehnt localize-me Änderungen als fremde Herkunft ab.
+- **Reverse Proxy:** Der Proxy muss den ursprünglichen `Host`-Header durchreichen (nginx: `proxy_set_header Host $host;`). Sonst lehnt localize-me Änderungen als fremde Herkunft ab. Läuft localize-me auf `127.0.0.1` und der Proxy auf demselben Rechner, trag dessen Hostnamen mit `--allowed-host` ein.
 - **Mehrere Personen gleichzeitig** können arbeiten, alle offenen Tabs sehen Änderungen sofort. Bearbeiten zwei Leute denselben Text, gilt der zuletzt gespeicherte. Zwei Exporte gleichzeitig verhindert localize-me.
 - **Netzlaufwerke:** Auf eingebundenen Freigaben (SMB/NFS) bemerkt localize-me oft nicht, wenn *andere Rechner* die Datei ändern. Dann den Container neu starten, sonst überschreibt die nächste Bearbeitung in der Oberfläche diese Änderung. Wenn ihr die Datei nur über die Oberfläche ändert, betrifft euch das nicht.
 

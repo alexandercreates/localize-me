@@ -10,9 +10,7 @@ on:
   push:
     tags: ["v*"]
 
-permissions:
-  contents: write # GitHub-Release anlegen
-  id-token: write # Trusted Publishing + Provenance bei npm
+permissions: {}
 
 concurrency:
   group: release
@@ -21,14 +19,19 @@ concurrency:
 jobs:
   publish:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write # GitHub-Release anlegen
+      id-token: write # Trusted Publishing + Provenance bei npm
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
-      - uses: actions/setup-node@v5
+      # Bewusst ohne npm-Cache: Ein Cache aus anderen Läufen soll nicht in die Veröffentlichung gelangen.
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24
           registry-url: https://registry.npmjs.org
-          cache: npm
 
       - name: Tag und package.json müssen zusammenpassen
         run: |
@@ -42,9 +45,8 @@ jobs:
             exit 1
           fi
 
-      - run: npm ci
-        env:
-          LOCALIZE_ME_SKIP_POSTINSTALL: "1"
+      # --ignore-scripts: keine Install-Skripte von Abhängigkeiten in einem Job mit Publish-Rechten.
+      - run: npm ci --ignore-scripts
 
       - run: npm test
 

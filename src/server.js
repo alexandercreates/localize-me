@@ -21,16 +21,36 @@ const MIME = {
   ".ico": "image/x-icon",
   ".json": "application/json; charset=utf-8",
 };
+const LOOPBACK = ["127.0.0.1", "localhost", "::1"];
+const LOOPBACK_HOSTNAMES = ["localhost", "127.0.0.1", "[::1]"];
+
+// Für jede Antwort. Die Oberfläche lädt nur eigene Dateien und darf nicht eingebettet werden
+// (sonst ließe sich „Dateien schreiben“ samt Commit/Push per Clickjacking auslösen).
+const SECURITY_HEADERS = {
+  "X-Content-Type-Options": "nosniff",
+  "X-Frame-Options": "DENY",
+  "Referrer-Policy": "no-referrer",
+  "Cross-Origin-Opener-Policy": "same-origin",
+  "Cross-Origin-Resource-Policy": "same-origin",
+  "Content-Security-Policy":
+    "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; " +
+    "connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'",
+};
 
 /**
  * `uiDir: null` startet nur die API (Entwicklung mit Vite).
  * `versioning`: was nach „Dateien schreiben“ passiert – { commit, push, message, hook }, siehe versioning.js.
+ * `host`: Adresse, auf der der Server lauscht. Bei 127.0.0.1/localhost werden nur Anfragen an localhost
+ * angenommen – das schützt vor DNS-Rebinding (fremde Domain, die auf 127.0.0.1 zeigt).
+ * `allowedHosts`: weitere Hostnamen, z. B. hinter einem Reverse Proxy auf demselben Rechner.
  */
-export function createServer({ file, uiDir = UI_DIR, versioning = {} }) {
+export function createServer({ file, uiDir = UI_DIR, versioning = {}, host = "127.0.0.1", allowedHosts = [] }) {
   const store = new Store(file);
   store.ensureFile();
   const clients = new Set();
   const versioned = !!(versioning.commit || versioning.push || versioning.hook);
+  const localOnly = LOOPBACK.includes(host);
+  const hostnames = [...LOOPBACK_HOSTNAMES, ...allowedHosts.map((h) => h.toLowerCase())];
   let exporting = false;
 
   // Änderungen von außen (git pull, Editor) an alle offenen Tabs melden.
@@ -55,6 +75,7 @@ export function createServer({ file, uiDir = UI_DIR, versioning = {} }) {
   function send(res, status, body, headers = {}) {
     const isText = typeof body === "string";
     res.writeHead(status, {
+      ...SECURITY_HEADERS,
       "Content-Type": isText ? "text/plain; charset=utf-8" : "application/json; charset=utf-8",
       "Cache-Control": "no-store",
       ...headers,
@@ -77,6 +98,7 @@ export function createServer({ file, uiDir = UI_DIR, versioning = {} }) {
       return send(res, 404, "Nicht gefunden.");
     }
     res.writeHead(200, {
+      ...SECURITY_HEADERS,
       "Content-Type": MIME[path.extname(target)] || "application/octet-stream",
       "Cache-Control": rel.startsWith("assets/") ? "public, max-age=31536000, immutable" : "no-store",
     });
@@ -114,8 +136,20 @@ export function createServer({ file, uiDir = UI_DIR, versioning = {} }) {
     }
   }
 
+  // Lokal nur unter localhost erreichbar – eine fremde Domain mit DNS auf 127.0.0.1 wird abgewiesen.
+  function allowedHost(req) {
+    if (!localOnly) return true;
+    try {
+      return hostnames.includes(new URL(`http://${req.headers.host}`).hostname);
+    } catch {
+      return false;
+    }
+  }
+
   // Schreibende Anfragen nur von der eigenen Oberfläche, nicht von fremden Webseiten.
   function sameOrigin(req) {
+    const site = req.headers["sec-fetch-site"];
+    if (site && site !== "same-origin" && site !== "none") return false;
     const origin = req.headers.origin;
     if (!origin) return true;
     try {
@@ -131,6 +165,9 @@ export function createServer({ file, uiDir = UI_DIR, versioning = {} }) {
     const method = req.method;
 
     try {
+      if (!allowedHost(req)) {
+        return send(res, 421, { error: "Unbekannter Host. Öffne localize-me über http://localhost." });
+      }
       if (method !== "GET" && method !== "HEAD" && !sameOrigin(req)) {
         return send(res, 403, { error: "Fremde Herkunft abgelehnt." });
       }
@@ -147,7 +184,7 @@ export function createServer({ file, uiDir = UI_DIR, versioning = {} }) {
 
       // GET /api/events  (Server-Sent Events)
       if (method === "GET" && parts[1] === "events") {
-        res.writeHead(200, { "Content-Type": "text/event-stream", "Cache-Control": "no-store", Connection: "keep-alive" });
+        res.writeHead(200, { ...SECURITY_HEADERS, "Content-Type": "text/event-stream", "Cache-Control": "no-store", Connection: "keep-alive" });
         res.write("retry: 2000\n\n");
         clients.add(res);
         req.on("close", () => clients.delete(res));
