@@ -4,7 +4,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { buildIosStrings, buildAndroidXml, checkAndroidNames, valuesDir, lprojName, writeNative, configuredOutputs } from "../src/native.js";
-import { normalize } from "../src/store.js";
+import { normalize, Store, ValidationError } from "../src/store.js";
 import { buildCsv } from "../src/csv.js";
 
 const project = normalize({
@@ -91,4 +91,46 @@ test("Android: Punkte im Key werden zu Unterstrichen, auch in der CSV", () => {
   assert.match(buildCsv(p, { platform: "android", bom: false }), /^"onboarding_first_some_text";/m);
   assert.match(buildCsv(p, { platform: "ios", bom: false }), /^"onboarding\.first\.some_text";/m);
   assert.match(buildCsv(p, { bom: false }), /^"onboarding\.first\.some_text";/m);
+});
+
+test("Keys nur für eine Plattform fehlen im Export der anderen", () => {
+  const p = normalize({
+    base: "de",
+    only: { "face.id": "ios", "1widget": "android", "gone": "ios", "both": "web" },
+    keys: { "face.id": { de: "Face ID" }, "1widget": { de: "Widget" }, "both": { de: "Beide" } },
+  });
+  assert.deepEqual(p.only, { "1widget": "android", "face.id": "ios" });
+  assert.match(buildIosStrings(p, "de"), /"face\.id"/);
+  assert.doesNotMatch(buildIosStrings(p, "de"), /1widget/);
+  assert.doesNotMatch(buildAndroidXml(p, "de"), /face_id/);
+  assert.match(buildAndroidXml(p, "de"), /<string name="both">/);
+  // Nur-iOS-Keys müssen keinen gültigen Android-Namen ergeben.
+  const ios = normalize({ base: "de", only: { "1face": "ios" }, keys: { "1face": { de: "x" } } });
+  assert.deepEqual(checkAndroidNames(ios), []);
+  assert.doesNotMatch(buildCsv(p, { platform: "android", bom: false }), /face_id/);
+  assert.doesNotMatch(buildCsv(p, { platform: "ios", bom: false }), /1widget/);
+  assert.match(buildCsv(p, { bom: false }), /"face\.id".*\r\n.*/s);
+  assert.match(buildCsv(p, { bom: false }), /"1widget"/);
+});
+
+test("Store: only beim Anlegen, Ändern, Umbenennen und Löschen", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "lm-only-"));
+  try {
+    const store = new Store(path.join(dir, "localize.json"));
+    store.addKey("face.id", { de: "Face ID" }, { only: "ios" });
+    assert.deepEqual(store.project.only, { "face.id": "ios" });
+    assert.throws(() => store.addKey("x", {}, { only: "web" }), ValidationError);
+    store.renameKey("face.id", "touch.id");
+    assert.deepEqual(store.project.only, { "touch.id": "ios" });
+    store.setOnly("touch.id", "android");
+    assert.deepEqual(store.project.only, { "touch.id": "android" });
+    store.setOnly("touch.id", "");
+    assert.equal(store.project.only, undefined);
+    assert.doesNotMatch(fs.readFileSync(store.file, "utf8"), /"only"/);
+    store.setOnly("touch.id", "ios");
+    store.deleteKey("touch.id");
+    assert.equal(store.project.only, undefined);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });

@@ -6,6 +6,7 @@ Läuft lokal auf deinem Rechner oder zentral fürs ganze Team auf einem Server. 
 
 - [Schnellstart](#schnellstart)
 - [Platzhalter](#platzhalter) und [Plurals](#plurals)
+- [Texte nur für iOS oder Android](#texte-nur-für-ios-oder-android)
 - [Export](#export) ins App-Projekt oder als CSV
 - [Optionen für die Oberfläche](#optionen-für-die-oberfläche)
 - [Beim Export versionieren](#beim-export-versionieren) (Commit, Push, eigener Befehl)
@@ -105,6 +106,23 @@ let text = count == 0 ? NSLocalizedString("tasks.open_none", comment: "")
 // Android
 val text = if (count == 0) stringResource(R.string.tasks_open_none)
            else pluralStringResource(R.plurals.tasks_open, count, count)
+```
+
+## Texte nur für iOS oder Android
+
+Manche Texte braucht nur eine App, etwa für Face ID oder ein Android-Widget. Wähl dafür beim Anlegen unter **Plattform** „Nur iOS“ oder „Nur Android“. Bei bestehenden Keys steht die Auswahl unter dem Key-Namen.
+
+- Der Key fehlt dann im Export der anderen Plattform, sowohl in den nativen Dateien als auch in der CSV.
+- Die neutrale CSV (`raw`) enthält weiter alle Keys.
+- Ein Key nur für iOS muss keinen gültigen Android-Namen ergeben und kollidiert auch nicht mit Android-Namen anderer Keys.
+
+In der `localize.json` steht das unter `only`:
+
+```json
+"only": {
+  "settings.face_id": "ios",
+  "widget.title": "android"
+}
 ```
 
 ## Export
@@ -371,10 +389,14 @@ Sicher das Volume dann regelmäßig per Backup, sonst gibt es keine Kopie der Te
     { "code": "en", "name": "Englisch" }
   ],
   "output": { "ios": "../ios/MeineApp/Resources", "android": "../android/app/src/main/res" },
+  "only": { "settings.face_id": "ios" },
   "keys": {
     "home.greeting": {
       "de": "Hallo #name, schön dich zu sehen.",
       "en": "Hi #name, nice to see you."
+    },
+    "settings.face_id": {
+      "de": "Mit Face ID entsperren"
     }
   }
 }

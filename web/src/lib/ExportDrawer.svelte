@@ -1,6 +1,7 @@
 <script>
   import { buildCsv, csvFilename } from "@shared/csv.js";
   import { isFilled, isPluralKey } from "@shared/plurals.js";
+  import { exportsTo } from "@shared/platforms.js";
   import { app, prefs } from "./model.svelte.js";
   import { printfSegments } from "./tokens.js";
   import Icon from "./ui/Icon.svelte";
@@ -30,7 +31,9 @@
   const langs = $derived(scope === "pair" && app.target ? [app.base, app.target] : allLangs);
   const filename = $derived(csvFilename(langs, platform));
   const lines = $derived(app.project ? buildCsv(app.project, { platform, languages: langs, delimiter, bom: false }).trimEnd().split("\r\n") : []);
-  const missing = $derived(langs.slice(1).reduce((n, code) => n + app.keyNames.filter((k) => !isFilled(app.project.keys[k][code])).length, 0));
+  // Keys, die nur die andere Plattform braucht, landen nicht in der Datei und zählen nicht mit.
+  const keys = $derived(app.keyNames.filter((k) => exportsTo(app.project, k, platform)));
+  const missing = $derived(langs.slice(1).reduce((n, code) => n + keys.filter((k) => !isFilled(app.project.keys[k][code])).length, 0));
   const href = $derived("/api/export?" + new URLSearchParams({ platform, delimiter, langs: langs.join(",") }));
   // Zielordner aus "output" in localize.json – dann schreibt der Server die Dateien direkt ins App-Projekt.
   const outputs = $derived(Object.entries(app.project?.output ?? {}));
@@ -107,7 +110,7 @@
     <header>
       <div>
         <h2 id="export-title">Exportieren</h2>
-        <p>{app.keyNames.length} Keys · {langs.map((c) => app.langName(c)).join(" → ")}</p>
+        <p>{keys.length} Keys · {langs.map((c) => app.langName(c)).join(" → ")}</p>
       </div>
       <button type="button" class="close" aria-label="Schließen" onclick={() => dialog.close()}><Icon name="x" size={18} /></button>
     </header>

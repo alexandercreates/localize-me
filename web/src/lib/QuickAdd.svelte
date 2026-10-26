@@ -1,5 +1,5 @@
 <script>
-  import { app } from "./model.svelte.js";
+  import { app, ONLY_LABELS } from "./model.svelte.js";
   import Button from "./ui/Button.svelte";
 
   let { keyInput = $bindable() } = $props();
@@ -7,6 +7,7 @@
   let key = $state("");
   let text = $state("");
   let plural = $state(false);
+  let only = $state("");
   let error = $state("");
   let busy = $state(false);
 
@@ -14,12 +15,13 @@
     e.preventDefault();
     const name = key.trim();
     busy = true;
-    error = (await app.mutate("POST", "/api/keys", { key: name, values: { [app.base]: text }, plural })) || "";
+    error = (await app.mutate("POST", "/api/keys", { key: name, values: { [app.base]: text }, plural, only })) || "";
     busy = false;
     if (error) return;
     app.notify(`„${name}“ angelegt.`);
     key = text = "";
     plural = false;
+    only = "";
     keyInput?.focus();
   }
 </script>
@@ -47,6 +49,12 @@
     <label class="check" title="Text hängt von einer Anzahl ab: „Eine Aufgabe“ / „3 Aufgaben“">
       <input type="checkbox" bind:checked={plural} />Plural
     </label>
+    <label class="field platform">
+      <span class="label">Plattform</span>
+      <select bind:value={only}>
+        {#each Object.entries(ONLY_LABELS) as [value, label]}<option {value}>{label}</option>{/each}
+      </select>
+    </label>
     <Button type="submit" variant="inverse" icon="plus" disabled={busy}>Key anlegen</Button>
   </div>
   {#if error}
@@ -68,20 +76,21 @@
     padding: var(--space-20); border-radius: var(--radius-xl);
     background: var(--bg-surface); border: 1px solid var(--border); box-shadow: var(--shadow-card);
   }
-  .row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto auto; gap: var(--space-12); align-items: end; }
+  .row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto auto auto; gap: var(--space-12); align-items: end; }
   .check {
     display: inline-flex; align-items: center; gap: 6px; height: 40px;
     font-size: 13px; line-height: 18px; font-weight: 500; color: var(--text-muted); white-space: nowrap;
   }
   .check input { width: 16px; height: 16px; margin: 0; accent-color: var(--token); }
   .field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
-  .field input {
+  .field input, .field select {
     width: 100%; height: 40px; padding: 0 12px;
     border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--bg-surface); color: var(--text);
   }
   input.mono { font-size: 13px; }
   input::placeholder { color: var(--text-subtle); }
-  input:focus { outline: none; border-color: var(--text); box-shadow: var(--ring); }
+  .platform select { width: auto; padding-right: 8px; font-size: 14px; }
+  input:focus, select:focus { outline: none; border-color: var(--text); box-shadow: var(--ring); }
   input[aria-invalid="true"] { border-color: var(--danger); box-shadow: 0 0 0 3px var(--danger-soft); }
   .error { margin: -4px 0 0; font-size: 13px; line-height: 18px; color: var(--danger); }
   .hint { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin: 0; font-size: 13px; line-height: 18px; color: var(--text-muted); }

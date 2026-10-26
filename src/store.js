@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { CATEGORIES, isPluralKey, isPluralValue } from "./plurals.js";
+import { ONLY_PLATFORMS } from "./platforms.js";
 
 // localize.json – eine Datei, git-freundlich: Keys alphabetisch, eine Zeile pro Sprache.
 //
@@ -8,6 +9,7 @@ import { CATEGORIES, isPluralKey, isPluralValue } from "./plurals.js";
 //   "base": "de",
 //   "languages": [{ "code": "de", "name": "Deutsch" }],
 //   "output": { "ios": "../ios/App/Resources", "android": "../android/app/src/main/res" },
+//   "only": { "settings.face_id": "ios" },
 //   "keys": {
 //     "onboarding.title": { "de": "Willkommen!" },
 //     "tasks.open": { "de": { "one": "Eine Aufgabe", "other": "#count:int Aufgaben" } }
@@ -15,6 +17,7 @@ import { CATEGORIES, isPluralKey, isPluralValue } from "./plurals.js";
 // }
 //
 // `output` ist optional: Zielordner für `localize-me export`, relativ zu localize.json.
+// `only` ist optional: Keys, die nur eine Plattform braucht (siehe platforms.js).
 // Plurals (siehe plurals.js): Hat eine Sprache Formen, wird der ganze Key zum Plural.
 
 export const KEY_PATTERN = /^[A-Za-z0-9_.\-]+$/;
@@ -61,7 +64,17 @@ export function normalize(data) {
     const dir = data?.output?.[platform];
     if (typeof dir === "string" && dir.trim()) output[platform] = dir.trim();
   }
-  return Object.keys(output).length ? { base, languages, output, keys } : { base, languages, keys };
+  const only = {};
+  for (const name of Object.keys(data?.only || {}).sort((a, b) => a.localeCompare(b))) {
+    if (Object.hasOwn(keys, name) && ONLY_PLATFORMS.includes(data.only[name])) only[name] = data.only[name];
+  }
+  return {
+    base,
+    languages,
+    ...(Object.keys(output).length && { output }),
+    ...(Object.keys(only).length && { only }),
+    keys,
+  };
 }
 
 /** Nur bekannte Pluralformen mit Text, in fester Reihenfolge. */
@@ -123,12 +136,14 @@ export class Store {
 
   // ---------- Änderungen ----------
 
-  addKey(name, values = {}, { plural = false } = {}) {
+  addKey(name, values = {}, { plural = false, only = "" } = {}) {
     name = String(name || "").trim();
     if (!name) throw new ValidationError("Gib einen Key ein, zum Beispiel settings.title.");
     this.#checkKeyName(name);
     if (Object.hasOwn(this.project.keys, name)) throw new ValidationError(`„${name}“ gibt es schon.`);
+    this.#checkOnly(only);
     this.project.keys[name] = this.#cleanValues(values);
+    if (only) this.project.only = { ...this.project.only, [name]: only };
     if (plural) this.project.keys[name] = Object.fromEntries(
       Object.entries(this.project.keys[name]).map(([code, v]) => [code, isPluralValue(v) ? v : { other: v }]));
     if (plural && !this.project.keys[name][this.project.base]) this.project.keys[name][this.project.base] = {};
@@ -143,6 +158,10 @@ export class Store {
     if (Object.hasOwn(this.project.keys, next)) throw new ValidationError(`„${next}“ gibt es schon.`);
     this.project.keys[next] = this.project.keys[name];
     delete this.project.keys[name];
+    if (this.project.only?.[name]) {
+      this.project.only[next] = this.project.only[name];
+      delete this.project.only[name];
+    }
     this.save();
   }
 
@@ -179,9 +198,20 @@ export class Store {
     this.save();
   }
 
+  /** Beschränkt einen Key auf eine Plattform ("ios", "android") oder gibt ihn mit "" für beide frei. */
+  setOnly(name, only) {
+    this.#requireKey(name);
+    this.#checkOnly(only);
+    this.project.only = { ...this.project.only };
+    if (only) this.project.only[name] = only;
+    else delete this.project.only[name];
+    this.save();
+  }
+
   deleteKey(name) {
     this.#requireKey(name);
     delete this.project.keys[name];
+    if (this.project.only) delete this.project.only[name];
     this.save();
   }
 
@@ -213,6 +243,12 @@ export class Store {
   #checkKeyName(name) {
     if (!KEY_PATTERN.test(name) || name === RESERVED) {
       throw new ValidationError("Keys dürfen nur Buchstaben, Ziffern, Punkt, Unterstrich und Bindestrich enthalten.");
+    }
+  }
+
+  #checkOnly(only) {
+    if (only !== "" && !ONLY_PLATFORMS.includes(only)) {
+      throw new ValidationError(`Unbekannte Plattform: ${only}. Erlaubt: ${ONLY_PLATFORMS.join(", ")} oder leer für beide.`);
     }
   }
 
