@@ -1,8 +1,10 @@
+import { resourceName } from "./names.js";
 import { convert } from "./placeholders.js";
 import { CATEGORIES, categoriesFor, isPluralKey, isPluralValue } from "./plurals.js";
 
 /**
  * Baut die CSV-Datei. Plurals stehen mit einer Zeile pro Form darin: `tasks.open[one]`, `tasks.open[other]`.
+ * Für Android steht in der Spalte key der Ressourcenname: `tasks.open` → `tasks_open`.
  * @param {object} project  normalisiertes Projekt aus localize.json
  * @param {object} options
  * @param {"ios"|"android"|"raw"} [options.platform="raw"]
@@ -20,8 +22,9 @@ export function buildCsv(project, { platform = "raw", languages, delimiter = ";"
 
   const q = (s) => '"' + String(s ?? "").replace(/"/g, '""') + '"';
   const lines = [["key", ...langs].map(q).join(delimiter)];
-  for (const name of Object.keys(project.keys).sort((a, b) => a.localeCompare(b))) {
-    const values = project.keys[name];
+  for (const key of Object.keys(project.keys).sort((a, b) => a.localeCompare(b))) {
+    const values = project.keys[key];
+    const name = platform === "android" ? resourceName(key) : key;
     if (isPluralKey(values)) {
       const baseOther = values[base]?.other || "";
       const needed = new Set(langs.flatMap(categoriesFor));

@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { convert, parse, specOf } from "./placeholders.js";
+import { resourceName } from "./names.js";
 import { categoriesFor, countOf, isPluralKey, isPluralValue } from "./plurals.js";
 import { LANG_PATTERN } from "./store.js";
 
@@ -106,11 +107,6 @@ export function buildIosStringsdict(project, lang) {
 }
 
 // ---------- Android ----------
-
-/** `login.title` → `login_title`. Android erlaubt nur Java-Bezeichner als Namen. */
-export function resourceName(key) {
-  return key.replace(/[.\-]/g, "_");
-}
 
 /** `de` → `values`, `en` → `values-en`, `pt-BR` → `values-pt-rBR`, `zh-Hans` → `values-b+zh+Hans`. */
 export function valuesDir(code, base) {
