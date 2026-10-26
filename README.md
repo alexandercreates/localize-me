@@ -162,7 +162,7 @@ Ohne `output` in der `localize.json` ist CSV der Standard, `--format csv` kann d
 | `--out`       | Pfad                        | native: aus `output`, csv: `strings_<sprachen>_<plattform>.csv` |
 | `--file`      | Pfad zur Textdatei          | `localize.json`                       |
 
-Die CSV ist UTF-8 mit BOM, alle Werte stehen in Anführungszeichen.
+Die CSV ist UTF-8 mit BOM, alle Werte stehen in Anführungszeichen. Mit `--platform android` steht in der Spalte `key` der Android-Name (`onboarding.first.some_text` → `onboarding_first_some_text`), bei `ios` und `raw` der Key unverändert.
 
 ## Optionen für die Oberfläche
 

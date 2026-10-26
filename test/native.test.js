@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { buildIosStrings, buildAndroidXml, checkAndroidNames, valuesDir, lprojName, writeNative, configuredOutputs } from "../src/native.js";
 import { normalize } from "../src/store.js";
+import { buildCsv } from "../src/csv.js";
 
 const project = normalize({
   base: "de",
@@ -81,4 +82,13 @@ test("output wird relativ zu localize.json aufgelöst und bleibt beim Normalisie
   assert.deepEqual(p.output, { ios: "../ios/Res" });
   assert.deepEqual(configuredOutputs(p, "/a/texte/localize.json"), [{ platform: "ios", dir: path.resolve("/a/ios/Res") }]);
   assert.equal(normalize({ keys: {} }).output, undefined);
+});
+
+test("Android: Punkte im Key werden zu Unterstrichen, auch in der CSV", () => {
+  const p = normalize({ base: "de", keys: { "onboarding.first.some_text": { de: "Los geht's" } } });
+  assert.match(buildAndroidXml(p, "de"), /<string name="onboarding_first_some_text">/);
+  assert.match(buildIosStrings(p, "de"), /^"onboarding\.first\.some_text" = /m);
+  assert.match(buildCsv(p, { platform: "android", bom: false }), /^"onboarding_first_some_text";/m);
+  assert.match(buildCsv(p, { platform: "ios", bom: false }), /^"onboarding\.first\.some_text";/m);
+  assert.match(buildCsv(p, { bom: false }), /^"onboarding\.first\.some_text";/m);
 });
