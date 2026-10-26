@@ -1,0 +1,30 @@
+# Hält Abhängigkeiten und GitHub Actions aktuell. Sicherheitsupdates kommen sofort,
+# normale Updates einmal pro Woche gebündelt als ein PR je Ökosystem.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    # Neue Versionen erst nach ein paar Tagen – kompromittierte Releases fallen meist vorher auf.
+    cooldown:
+      default-days: 5
+    groups:
+      npm:
+        patterns: ["*"]
+    commit-message:
+      prefix: "deps"
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    cooldown:
+      default-days: 5
+    groups:
+      actions:
+        patterns: ["*"]
+    commit-message:
+      prefix: "ci"

@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { convert, parse, specOf } from "./placeholders.js";
 import { categoriesFor, countOf, isPluralKey, isPluralValue } from "./plurals.js";
+import { LANG_PATTERN } from "./store.js";
 
 // Native Ressourcen-Dateien direkt fürs App-Projekt:
 //
@@ -172,6 +173,9 @@ export function buildAndroidXml(project, lang) {
 
 /** Dateien einer Plattform als [{ path (relativ zum Ziel), content }]. */
 export function nativeFiles(project, platform) {
+  // Sprachcodes werden zu Ordnernamen – aus einer von Hand bearbeiteten localize.json dürfen sie nicht aus dem Ziel herausführen.
+  const invalid = project.languages.map((l) => l.code).filter((c) => !LANG_PATTERN.test(c));
+  if (invalid.length) throw new Error(`Ungültige Sprachcodes in localize.json: ${invalid.join(", ")} (erlaubt z. B. en, pt-BR, zh-Hans).`);
   if (platform === "ios") {
     const plurals = pluralKeys(project).length > 0;
     return languageOrder(project).flatMap((code) => [

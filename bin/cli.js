@@ -26,6 +26,8 @@ Optionen für dev:
   --port <n>               Port (Standard: 4848, belegt → nächster freier)
   --host <adresse>         Netzwerk-Adresse (Standard: 127.0.0.1, nur dieser Rechner;
                            0.0.0.0 für Docker/Server – ohne Login, siehe README)
+  --allowed-host <namen>   Weitere Hostnamen, unter denen die Oberfläche lokal erreichbar ist,
+                           z. B. hinter einem Reverse Proxy (kommagetrennt)
   --file <pfad>            Datei mit den Texten (Standard: localize.json)
   --no-open                Browser nicht automatisch öffnen
 
@@ -59,6 +61,7 @@ try {
     options: {
       port: { type: "string" },
       host: { type: "string" },
+      "allowed-host": { type: "string" },
       file: { type: "string" },
       "no-open": { type: "boolean" },
       platform: { type: "string" },
@@ -104,10 +107,11 @@ async function dev() {
   const port = Number(opts.port || process.env.PORT || 4848);
   if (!Number.isInteger(port) || port < 1 || port > 65535) fail(`Ungültiger Port: ${opts.port}`);
   const host = opts.host || "127.0.0.1";
+  const allowedHosts = (opts["allowed-host"] || "").split(",").map((h) => h.trim()).filter(Boolean);
 
   let server;
   try {
-    ({ server } = createServer({ file, versioning }));
+    ({ server } = createServer({ file, versioning, host, allowedHosts }));
   } catch (e) {
     fail(e.message);
   }

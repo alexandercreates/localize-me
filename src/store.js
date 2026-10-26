@@ -19,6 +19,8 @@ import { CATEGORIES, isPluralKey, isPluralValue } from "./plurals.js";
 
 export const KEY_PATTERN = /^[A-Za-z0-9_.\-]+$/;
 export const LANG_PATTERN = /^[a-z]{2,3}([-_][A-Za-z0-9]{2,4})?$/;
+// Würde als Objekt-Schlüssel den Prototyp ersetzen statt einen Eintrag anzulegen.
+const RESERVED = "__proto__";
 
 const DEFAULT_PROJECT = {
   base: "de",
@@ -37,10 +39,12 @@ export function normalize(data) {
   const base = languages.some((l) => l.code === data?.base) ? data.base : languages[0].code;
   const keys = {};
   for (const name of Object.keys(data?.keys || {}).sort((a, b) => a.localeCompare(b))) {
+    if (name === RESERVED) continue;
     const values = data.keys[name] || {};
     const plural = isPluralKey(values);
     keys[name] = {};
     for (const code of Object.keys(values).sort()) {
+      if (code === RESERVED) continue;
       const value = values[code];
       if (!plural) {
         if (typeof value === "string") keys[name][code] = value;
@@ -122,8 +126,8 @@ export class Store {
   addKey(name, values = {}, { plural = false } = {}) {
     name = String(name || "").trim();
     if (!name) throw new ValidationError("Gib einen Key ein, zum Beispiel settings.title.");
-    if (!KEY_PATTERN.test(name)) throw new ValidationError("Keys dürfen nur Buchstaben, Ziffern, Punkt, Unterstrich und Bindestrich enthalten.");
-    if (this.project.keys[name]) throw new ValidationError(`„${name}“ gibt es schon.`);
+    this.#checkKeyName(name);
+    if (Object.hasOwn(this.project.keys, name)) throw new ValidationError(`„${name}“ gibt es schon.`);
     this.project.keys[name] = this.#cleanValues(values);
     if (plural) this.project.keys[name] = Object.fromEntries(
       Object.entries(this.project.keys[name]).map(([code, v]) => [code, isPluralValue(v) ? v : { other: v }]));
@@ -135,8 +139,8 @@ export class Store {
     next = String(next || "").trim();
     this.#requireKey(name);
     if (next === name) return;
-    if (!KEY_PATTERN.test(next)) throw new ValidationError("Keys dürfen nur Buchstaben, Ziffern, Punkt, Unterstrich und Bindestrich enthalten.");
-    if (this.project.keys[next]) throw new ValidationError(`„${next}“ gibt es schon.`);
+    this.#checkKeyName(next);
+    if (Object.hasOwn(this.project.keys, next)) throw new ValidationError(`„${next}“ gibt es schon.`);
     this.project.keys[next] = this.project.keys[name];
     delete this.project.keys[name];
     this.save();
@@ -145,6 +149,7 @@ export class Store {
   /** Setzt einen Text. Bei Plural-Keys gehört `form` dazu (one, other, …). */
   setValue(name, lang, value, form) {
     this.#requireKey(name);
+    if (!LANG_PATTERN.test(lang)) throw new ValidationError(`Ungültiger Sprachcode: ${lang}`);
     if (typeof value !== "string") throw new ValidationError("Der Text muss eine Zeichenkette sein.");
     const values = this.project.keys[name];
     if (isPluralKey(values)) {
@@ -205,13 +210,20 @@ export class Store {
     this.save();
   }
 
+  #checkKeyName(name) {
+    if (!KEY_PATTERN.test(name) || name === RESERVED) {
+      throw new ValidationError("Keys dürfen nur Buchstaben, Ziffern, Punkt, Unterstrich und Bindestrich enthalten.");
+    }
+  }
+
   #requireKey(name) {
-    if (!this.project.keys[name]) throw new ValidationError(`Den Key „${name}“ gibt es nicht.`);
+    if (!Object.hasOwn(this.project.keys, name)) throw new ValidationError(`Den Key „${name}“ gibt es nicht.`);
   }
 
   #cleanValues(values) {
     const out = {};
     for (const [code, v] of Object.entries(values || {})) {
+      if (!LANG_PATTERN.test(code)) continue;
       if (typeof v === "string" && v !== "") out[code] = v;
       else if (isPluralValue(v)) out[code] = normalizeForms(v);
     }
