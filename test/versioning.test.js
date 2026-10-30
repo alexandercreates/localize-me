@@ -93,15 +93,17 @@ test("Repo eines anderen Benutzers (gemountetes Volume) wird trotzdem committet"
   const { work } = setup();
   const strings = write(path.join(work, "ios", "de.lproj", "Localizable.strings"), '"a" = "b";\n');
   // Git behandelt damit jedes Repo so, als gehöre es einem anderen Benutzer – auch das
-  // lokale Test-Remote, deshalb ohne Push.
-  process.env.GIT_TEST_ASSUME_DIFFERENT_OWNER = "1";
+  // lokale Test-Remote, deshalb ohne Push. CI-Runner geben per System- oder globaler
+  // Konfiguration oft alle Ordner frei, die wird hier ausgeblendet.
+  const env = { GIT_TEST_ASSUME_DIFFERENT_OWNER: "1", GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: os.devnull };
+  Object.assign(process.env, env);
   try {
     assert.throws(() => git(work, "status"), /dubious ownership/);
     const [r] = await commitFiles([strings]);
     assert.equal(r.error, undefined);
     assert.ok(r.commit);
   } finally {
-    delete process.env.GIT_TEST_ASSUME_DIFFERENT_OWNER;
+    for (const key of Object.keys(env)) delete process.env[key];
   }
   assert.equal(git(work, "log", "-1", "--format=%s"), "Texte aktualisiert (localize-me)");
 });
