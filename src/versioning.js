@@ -14,9 +14,12 @@ function tail(text) {
   return trimmed.length > OUTPUT_TAIL ? "…" + trimmed.slice(-OUTPUT_TAIL) : trimmed;
 }
 
-function git(cwd, args) {
+// Gemountete Volumes (Docker, Azure Files) gehören oft einem anderen Benutzer als dem Prozess,
+// dann bricht Git mit "dubious ownership" ab. Freigegeben wird nur das Repo, in dem die
+// exportierten Dateien liegen – nur für diesen Aufruf, ohne die globale Git-Konfiguration zu ändern.
+function git(cwd, args, trusted = cwd) {
   return new Promise((resolve, reject) => {
-    execFile("git", args, { cwd, timeout: 120_000, maxBuffer: 8 * 1024 * 1024 }, (err, stdout, stderr) => {
+    execFile("git", ["-c", `safe.directory=${trusted}`, ...args], { cwd, timeout: 120_000, maxBuffer: 8 * 1024 * 1024 }, (err, stdout, stderr) => {
       if (!err) return resolve(stdout.trim());
       if (err.code === "ENOENT") return reject(new Error("git ist nicht installiert."));
       reject(new Error(tail(stderr || stdout || err.message)));
@@ -24,14 +27,23 @@ function git(cwd, args) {
   });
 }
 
+/** Nächster Ordner mit `.git` oberhalb von `dir` – dort sucht auch Git das Repository. */
+function nearestRepo(dir) {
+  for (let d = dir; ; d = path.dirname(d)) {
+    if (fs.existsSync(path.join(d, ".git"))) return d;
+    if (path.dirname(d) === d) return dir;
+  }
+}
+
 /** Ordnet Dateien ihrem Git-Repository zu – iOS und Android dürfen in verschiedenen Repos liegen. */
 async function groupByRepo(files, base) {
   const repos = new Map();
   for (const file of files) {
     const real = fs.realpathSync(file);
+    const dir = path.dirname(real);
     let root;
     try {
-      root = await git(path.dirname(real), ["rev-parse", "--show-toplevel"]);
+      root = await git(dir, ["rev-parse", "--show-toplevel"], nearestRepo(dir));
     } catch {
       throw new Error(`${(base && path.relative(base, file)) || file} liegt in keinem Git-Repository.`);
     }

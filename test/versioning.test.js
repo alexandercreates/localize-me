@@ -89,6 +89,23 @@ test("iOS und Android in getrennten Repos bekommen je einen Commit", async () =>
   assert.ok(results.every((r) => r.commit && !r.error));
 });
 
+test("Repo eines anderen Benutzers (gemountetes Volume) wird trotzdem committet", async () => {
+  const { work } = setup();
+  const strings = write(path.join(work, "ios", "de.lproj", "Localizable.strings"), '"a" = "b";\n');
+  // Git behandelt damit jedes Repo so, als gehöre es einem anderen Benutzer – auch das
+  // lokale Test-Remote, deshalb ohne Push.
+  process.env.GIT_TEST_ASSUME_DIFFERENT_OWNER = "1";
+  try {
+    assert.throws(() => git(work, "status"), /dubious ownership/);
+    const [r] = await commitFiles([strings]);
+    assert.equal(r.error, undefined);
+    assert.ok(r.commit);
+  } finally {
+    delete process.env.GIT_TEST_ASSUME_DIFFERENT_OWNER;
+  }
+  assert.equal(git(work, "log", "-1", "--format=%s"), "Texte aktualisiert (localize-me)");
+});
+
 test("Datei außerhalb eines Repos meldet einen Fehler statt zu werfen", async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "localize-nogit-"));
   const json = write(path.join(dir, "localize.json"), "{}\n");
