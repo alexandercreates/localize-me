@@ -4,6 +4,7 @@
   import { exportsTo } from "@shared/platforms.js";
   import { app, prefs } from "./model.svelte.js";
   import { printfSegments } from "./tokens.js";
+  import { publicUrl } from "./urls.js";
   import Icon from "./ui/Icon.svelte";
   import Button from "./ui/Button.svelte";
 
@@ -34,7 +35,7 @@
   // Keys, die nur die andere Plattform braucht, landen nicht in der Datei und zählen nicht mit.
   const keys = $derived(app.keyNames.filter((k) => exportsTo(app.project, k, platform)));
   const missing = $derived(langs.slice(1).reduce((n, code) => n + keys.filter((k) => !isFilled(app.project.keys[k][code])).length, 0));
-  const href = $derived("/api/export?" + new URLSearchParams({ platform, delimiter, langs: langs.join(",") }));
+  const href = $derived(publicUrl("/api/export?" + new URLSearchParams({ platform, delimiter, langs: langs.join(",") })));
   // Zielordner aus "output" in localize.json – dann schreibt der Server die Dateien direkt ins App-Projekt.
   const outputs = $derived(Object.entries(app.project?.output ?? {}));
   const hasPlurals = $derived(app.keyNames.some((k) => isPluralKey(app.project.keys[k])));

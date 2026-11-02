@@ -7,6 +7,7 @@ import { buildCsv, csvFilename } from "./csv.js";
 import { PLATFORMS } from "./placeholders.js";
 import { configuredOutputs, writeNative } from "./native.js";
 import { afterExport, DEFAULT_MESSAGE } from "./versioning.js";
+import { internalOrigins, isRedirectStatus, publicOrigins, renderIndexHtml, resolvePublicConfig, resolveRedirect } from "./public-url.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const UI_DIR = path.join(here, "..", "ui");
@@ -43,14 +44,32 @@ const SECURITY_HEADERS = {
  * `host`: Adresse, auf der der Server lauscht. Bei 127.0.0.1/localhost werden nur Anfragen an localhost
  * angenommen – das schützt vor DNS-Rebinding (fremde Domain, die auf 127.0.0.1 zeigt).
  * `allowedHosts`: weitere Hostnamen, z. B. hinter einem Reverse Proxy auf demselben Rechner.
+ * `publicBasePath`, `publicOrigin`, `trustedProxies`: Betrieb hinter einem Reverse Proxy, der den Präfix entfernt,
+ * siehe public-url.js und README. Ungültige Werte werfen ConfigError, bevor etwas angelegt wird. Mit
+ * `lenientPublicConfig` startet der Server stattdessen ohne diese Einstellung und meldet sie unter /api/setup.
+ * `extraRoutes(req, res, { url, redirect })`: eigene Routen hinter denselben Sicherheitsprüfungen. Liefert sie
+ * true, gilt die Anfrage als beantwortet. `redirect(ziel, status = 302)` berücksichtigt den öffentlichen Präfix.
  */
-export function createServer({ file, uiDir = UI_DIR, versioning = {}, host = "127.0.0.1", allowedHosts = [] }) {
+export function createServer({
+  file,
+  uiDir = UI_DIR,
+  versioning = {},
+  host = "127.0.0.1",
+  allowedHosts = [],
+  publicBasePath,
+  publicOrigin,
+  trustedProxies,
+  lenientPublicConfig = false,
+  extraRoutes,
+}) {
+  const publicConfig = resolvePublicConfig({ publicBasePath, publicOrigin, trustedProxies }, { lenient: lenientPublicConfig });
   const store = new Store(file);
   store.ensureFile();
   const clients = new Set();
   const versioned = !!(versioning.commit || versioning.push || versioning.hook);
   const localOnly = LOOPBACK.includes(host);
   const hostnames = [...LOOPBACK_HOSTNAMES, ...allowedHosts.map((h) => h.toLowerCase())];
+  if (publicConfig.origin) hostnames.push(new URL(publicConfig.origin).hostname);
   let exporting = false;
 
   // Änderungen von außen (git pull, Editor) an alle offenen Tabs melden.
@@ -83,6 +102,18 @@ export function createServer({ file, uiDir = UI_DIR, versioning = {}, host = "12
     res.end(isText ? body : JSON.stringify(body));
   }
 
+  // Einzige Stelle, die Redirects erzeugt. Herkünfte werden je Anfrage bestimmt, damit wechselnde Hosts sich nicht mischen.
+  function redirect(req, res, url, target, status = 302) {
+    if (!isRedirectStatus(status)) throw new TypeError(`Kein Redirect-Status: ${status}`);
+    const location = resolveRedirect(target, {
+      basePath: publicConfig.basePath,
+      requestPath: url.pathname + url.search,
+      internal: internalOrigins(req, publicConfig),
+    });
+    res.writeHead(status, { ...SECURITY_HEADERS, "Cache-Control": "no-store", Location: location });
+    res.end();
+  }
+
   // Gebaute Oberfläche aus ui/. Dateien unter /assets/ tragen einen Hash im Namen und dürfen gecacht werden.
   function serveUi(res, pathname) {
     const rel = pathname === "/" ? "index.html" : decodeURIComponent(pathname).replace(/^\/+/, "");
@@ -102,7 +133,7 @@ export function createServer({ file, uiDir = UI_DIR, versioning = {}, host = "12
       "Content-Type": MIME[path.extname(target)] || "application/octet-stream",
       "Cache-Control": rel.startsWith("assets/") ? "public, max-age=31536000, immutable" : "no-store",
     });
-    res.end(body);
+    res.end(rel === "index.html" ? renderIndexHtml(body.toString("utf8"), publicConfig.basePath) : body);
   }
 
   function projectPayload() {
@@ -151,17 +182,27 @@ export function createServer({ file, uiDir = UI_DIR, versioning = {}, host = "12
     const site = req.headers["sec-fetch-site"];
     if (site && site !== "same-origin" && site !== "none") return false;
     const origin = req.headers.origin;
-    if (!origin) return true;
+    return !origin || originAllowed(req, origin);
+  }
+
+  function originAllowed(req, origin) {
     try {
-      return new URL(origin).host === req.headers.host;
+      const parsed = new URL(origin);
+      // Hinter einem Proxy zählt zusätzlich genau die konfigurierte öffentliche Herkunft, sonst keine fremde.
+      return parsed.host === req.headers.host || publicOrigins(req, publicConfig).includes(parsed.origin);
     } catch {
       return false;
     }
   }
 
   const server = http.createServer(async (req, res) => {
-    const url = new URL(req.url, "http://localhost");
-    const parts = url.pathname.split("/").filter(Boolean).map(decodeURIComponent);
+    let url, parts;
+    try {
+      url = new URL(req.url, "http://localhost");
+      parts = url.pathname.split("/").filter(Boolean).map(decodeURIComponent);
+    } catch {
+      return send(res, 400, { error: "Ungültiger Pfad." });
+    }
     const method = req.method;
 
     try {
@@ -171,6 +212,9 @@ export function createServer({ file, uiDir = UI_DIR, versioning = {}, host = "12
       if (method !== "GET" && method !== "HEAD" && !sameOrigin(req)) {
         return send(res, 403, { error: "Fremde Herkunft abgelehnt." });
       }
+
+      const tools = { url, redirect: (target, status) => redirect(req, res, url, target, status) };
+      if (extraRoutes && (await extraRoutes(req, res, tools))) return;
 
       if (parts[0] !== "api") {
         if ((method === "GET" || method === "HEAD") && uiDir) return serveUi(res, url.pathname);
@@ -182,9 +226,19 @@ export function createServer({ file, uiDir = UI_DIR, versioning = {}, host = "12
         return send(res, 200, projectPayload());
       }
 
+      // GET /api/setup?origin=<location.origin> – für den Hinweis in der Oberfläche, was an der Konfiguration fehlt.
+      // Dieselbe Prüfung wie beim Schreiben, damit der Hinweis schon vor dem ersten fehlgeschlagenen Speichern kommt.
+      if (method === "GET" && parts[1] === "setup" && parts.length === 2) {
+        return send(res, 200, {
+          problems: publicConfig.problems,
+          originAccepted: originAllowed(req, url.searchParams.get("origin") || ""),
+        });
+      }
+
       // GET /api/events  (Server-Sent Events)
       if (method === "GET" && parts[1] === "events") {
-        res.writeHead(200, { ...SECURITY_HEADERS, "Content-Type": "text/event-stream", "Cache-Control": "no-store", Connection: "keep-alive" });
+        // X-Accel-Buffering: nginx soll Ereignisse sofort durchreichen statt sie zu puffern.
+        res.writeHead(200, { ...SECURITY_HEADERS, "Content-Type": "text/event-stream", "Cache-Control": "no-store", Connection: "keep-alive", "X-Accel-Buffering": "no" });
         res.write("retry: 2000\n\n");
         clients.add(res);
         req.on("close", () => clients.delete(res));
@@ -299,7 +353,7 @@ export function createServer({ file, uiDir = UI_DIR, versioning = {}, host = "12
     for (const res of clients) res.end();
   });
 
-  return { server, store };
+  return { server, store, publicConfig };
 }
 
 /** Startet den Server; ist der Port belegt, wird der nächste probiert. */

@@ -12,6 +12,7 @@ import { NATIVE_PLATFORMS, configuredOutputs, writeNative } from "../src/native.
 import { addScripts } from "../src/project.js";
 import { isPluralValue } from "../src/plurals.js";
 import { afterExport, failed } from "../src/versioning.js";
+import { publicConfigFromEnv } from "../src/public-url.js";
 
 const pkg = JSON.parse(fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "package.json"), "utf8"));
 
@@ -28,6 +29,12 @@ Optionen für dev:
                            0.0.0.0 für Docker/Server – ohne Login, siehe README)
   --allowed-host <namen>   Weitere Hostnamen, unter denen die Oberfläche lokal erreichbar ist,
                            z. B. hinter einem Reverse Proxy (kommagetrennt)
+  --public-base-path <pfad>  Öffentlicher Pfadpräfix, den ein Reverse Proxy entfernt, z. B. /tools/app
+                           (Umgebung: PUBLIC_BASE_PATH)
+  --public-origin <origin>   Öffentliche Origin ohne Pfad, z. B. https://tools.example.org
+                           (Umgebung: PUBLIC_ORIGIN)
+  --trusted-proxy <ips>    IP-Adressen/CIDR-Bereiche, deren X-Forwarded-Host/-Proto gelten (kommagetrennt,
+                           Umgebung: PUBLIC_TRUSTED_PROXIES; Standard: keinem Proxy vertrauen)
   --file <pfad>            Datei mit den Texten (Standard: localize.json)
   --no-open                Browser nicht automatisch öffnen
 
@@ -62,6 +69,9 @@ try {
       port: { type: "string" },
       host: { type: "string" },
       "allowed-host": { type: "string" },
+      "public-base-path": { type: "string" },
+      "public-origin": { type: "string" },
+      "trusted-proxy": { type: "string" },
       file: { type: "string" },
       "no-open": { type: "boolean" },
       platform: { type: "string" },
@@ -109,9 +119,17 @@ async function dev() {
   const host = opts.host || "127.0.0.1";
   const allowedHosts = (opts["allowed-host"] || "").split(",").map((h) => h.trim()).filter(Boolean);
 
-  let server;
+  const fromEnv = publicConfigFromEnv();
+  const publicOptions = {
+    publicBasePath: opts["public-base-path"] ?? fromEnv.publicBasePath,
+    publicOrigin: opts["public-origin"] ?? fromEnv.publicOrigin,
+    trustedProxies: opts["trusted-proxy"] ?? fromEnv.trustedProxies,
+  };
+
+  let server, publicConfig;
   try {
-    ({ server } = createServer({ file, versioning, host, allowedHosts }));
+    // Ein falscher Wert soll den Dienst nicht stoppen: Die Oberfläche zeigt, was zu tun ist (siehe /api/setup).
+    ({ server, publicConfig } = createServer({ file, versioning, host, allowedHosts, ...publicOptions, lenientPublicConfig: true }));
   } catch (e) {
     fail(e.message);
   }
@@ -123,6 +141,8 @@ async function dev() {
   }
   const url = `http://localhost:${actual}`;
   console.log(`\n  localize-me läuft auf ${url}`);
+  for (const { message } of publicConfig.problems) console.error(`localize-me: ${message} Die Einstellung wird ignoriert.`);
+  if (publicConfig.basePath || publicConfig.origin) console.log(`  Öffentlich: ${publicConfig.origin}${publicConfig.basePath}/`);
   console.log(`  Texte: ${path.relative(process.cwd(), file) || file}`);
   if (!["127.0.0.1", "localhost", "::1"].includes(host)) console.log(`  Erreichbar im Netzwerk über ${host} – ohne Login, nur intern betreiben.`);
   const steps = [versioning.push ? "Commit + Push" : versioning.commit && "Commit", versioning.hook && `„${versioning.hook}“`].filter(Boolean);

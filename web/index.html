@@ -6,9 +6,18 @@
 <meta name="color-scheme" content="light dark">
 <title>localize-me</title>
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<style>
+  /* Bleibt nur sichtbar, wenn die Oberfläche nicht startet: main.js ersetzt den Inhalt von #app. */
+  #boot-hint { visibility: hidden; animation: boot-hint 0s 3s forwards; max-width: 40rem; margin: 15vh auto; padding: 0 16px; font: 16px/1.5 system-ui, sans-serif; }
+  @keyframes boot-hint { to { visibility: visible; } }
+</style>
 </head>
 <body>
-<div id="app"></div>
+<div id="app"><div id="boot-hint" role="alert">
+  <h1 style="font-size: 20px">Die Oberfläche konnte nicht geladen werden</h1>
+  <p>Läuft localize-me hinter einem Reverse Proxy mit Pfadpräfix, muss <code>PUBLIC_BASE_PATH</code> genau diesen Präfix enthalten, zum Beispiel <code>/tools/app</code>. Setze die Variable und starte localize-me neu.</p>
+  <p>Hilfe findest du im README unter „Hinter einem Reverse Proxy mit Pfadpräfix“. Hinweise stehen auch in der Serverausgabe.</p>
+</div></div>
 <script type="module" src="/src/main.js"></script>
 </body>
 </html>

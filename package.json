@@ -17,6 +17,7 @@
     "build": "vite build",
     "start": "node bin/cli.js dev --file example/localize.json",
     "test": "node --test",
+    "test:e2e": "vite build && node --test test/reverse-proxy.test.js",
     "prepack": "npm run build",
     "postinstall": "node bin/postinstall.js",
     "prepublishOnly": "node scripts/check-release.js",

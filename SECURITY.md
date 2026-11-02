@@ -21,6 +21,10 @@ Sicherheitsupdates gibt es nur für die neueste veröffentlichte Version auf npm
 - **Fremde Webseiten** können über den Browser nichts ändern: Schreibende Anfragen müssen von der
   eigenen Oberfläche kommen, lokal werden nur Anfragen an `localhost` angenommen (Schutz vor
   DNS-Rebinding), und die Oberfläche lässt sich nicht in fremde Seiten einbetten.
+- **Reverse Proxy mit Pfadpräfix:** Neben der eigenen Herkunft gilt für Schreibzugriffe nur die mit
+  `PUBLIC_ORIGIN` konfigurierte Origin. `X-Forwarded-Host` und `X-Forwarded-Proto` zählen nur, wenn die direkte
+  Gegenstelle in `PUBLIC_TRUSTED_PROXIES` steht; der Proxy muss diese Header dann selbst setzen und Werte vom
+  Browser überschreiben. localize-me setzt keine Cookies.
 - **Befehle** (`--commit`, `--push`, `--after-export`) lassen sich nur über die Kommandozeile setzen,
   nie über `localize.json`.
 - **`localize.json`** bestimmt mit `output`, wohin der Export schreibt. Behandle Änderungen daran

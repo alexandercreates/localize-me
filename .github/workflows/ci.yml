@@ -49,6 +49,12 @@ jobs:
 
       - run: npm run build
 
+      # Echtes Build hinter einem Proxy, der den Pfadpräfix entfernt (ubuntu-latest bringt Chrome mit).
+      - name: Abnahme hinter Reverse Proxy
+        run: node --test test/reverse-proxy.test.js
+        env:
+          LOCALIZE_ME_REQUIRE_UI: "1"
+
       - name: Bekannte Sicherheitslücken in Abhängigkeiten
         run: npm audit --audit-level=moderate
 

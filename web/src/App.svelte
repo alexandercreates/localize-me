@@ -9,6 +9,7 @@
   import Filters from "./lib/Filters.svelte";
   import KeyTable from "./lib/KeyTable.svelte";
   import ExportDrawer from "./lib/ExportDrawer.svelte";
+  import SetupNotice from "./lib/SetupNotice.svelte";
   import Icon from "./lib/ui/Icon.svelte";
 
   let searchInput = $state();
@@ -17,6 +18,7 @@
   let main = $state();
 
   onMount(() => {
+    app.checkSetup();
     app.load().then(() => { if (!app.keyNames.length) keyInput?.focus(); });
     return app.connect();
   });
@@ -52,6 +54,7 @@
   <Sidebar bind:codeInput={langCodeInput} />
 
   <main bind:this={main}>
+    <SetupNotice />
     {#if app.project}
       <TopBar bind:searchInput onaddlanguage={addLanguage} />
       {#if app.keyNames.length}

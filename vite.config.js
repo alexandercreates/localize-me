@@ -7,6 +7,9 @@ const r = (p) => fileURLToPath(new URL(p, import.meta.url));
 // Quellcode der Oberfläche liegt in web/, der fertige Build in ui/ (wird mit dem npm-Paket ausgeliefert).
 export default defineConfig({
   root: r("./web"),
+  // Relative Verweise: Dasselbe Build läuft unter jedem Pfadpräfix, CSS und JS enthalten keinen Präfix und
+  // dürfen deshalb unveränderlich gecacht werden. Die absoluten Pfade in index.html setzt der Server ein.
+  base: "./",
   plugins: [svelte()],
   resolve: {
     alias: {

@@ -11,6 +11,7 @@ Läuft lokal auf deinem Rechner oder zentral fürs ganze Team auf einem Server. 
 - [Optionen für die Oberfläche](#optionen-für-die-oberfläche)
 - [Beim Export versionieren](#beim-export-versionieren) (Commit, Push, eigener Befehl)
 - [Im Team auf einem Server (Docker)](#im-team-auf-einem-server-docker)
+- [Hinter einem Reverse Proxy mit Pfadpräfix](#hinter-einem-reverse-proxy-mit-pfadpräfix)
 
 ## Schnellstart
 
@@ -193,6 +194,9 @@ localize-me dev [optionen]      # bzw. npm run dev -- [optionen]
 | `--port <n>`             | Port der Oberfläche. Ist er belegt, nimmt localize-me den nächsten freien. | `4848` bzw. `$PORT`    |
 | `--host <adresse>`       | Netzwerk-Adresse. `0.0.0.0` macht die Oberfläche im Netzwerk erreichbar, siehe [Server](#im-team-auf-einem-server-docker). | `127.0.0.1` (nur dieser Rechner) |
 | `--allowed-host <namen>` | Weitere Hostnamen, kommagetrennt. Lokal nimmt localize-me nur Anfragen an `localhost` an (Schutz vor DNS-Rebinding) – hinter einem Reverse Proxy auf demselben Rechner hier dessen Namen eintragen. | – |
+| `--public-base-path <pfad>` | Öffentlicher Pfadpräfix, den ein Reverse Proxy entfernt, siehe [Pfadpräfix](#hinter-einem-reverse-proxy-mit-pfadpräfix). | `$PUBLIC_BASE_PATH`, sonst keiner |
+| `--public-origin <origin>` | Öffentliche Origin ohne Pfad                                          | `$PUBLIC_ORIGIN`, sonst keine |
+| `--trusted-proxy <ips>`  | IP-Adressen/CIDR-Bereiche, deren `X-Forwarded-Host`/`-Proto` gelten     | `$PUBLIC_TRUSTED_PROXIES`, sonst keine |
 | `--file <pfad>`          | Datei mit den Texten                                                    | `localize.json`           |
 | `--no-open`              | Browser nicht automatisch öffnen                                        | –                         |
 | `--commit`               | Jeder Export erzeugt einen Commit, siehe [Versionieren](#beim-export-versionieren). | –             |
@@ -375,9 +379,140 @@ Sicher das Volume dann regelmäßig per Backup, sonst gibt es keine Kopie der Te
 
 - **Persistenter Speicher:** `/data` muss ein Volume sein (bei Azure z. B. Azure Files), sonst sind die Texte nach einem Neustart oder Redeploy weg. Bei Variante B gibt es dann gar keine Kopie mehr, bei Variante A fehlen die nicht gepushten Änderungen.
 - **Neustarts:** Mit `--restart unless-stopped` (bzw. als Azure Container App oder App Service) startet der Container nach einem Absturz oder Server-Neustart von selbst wieder.
-- **Reverse Proxy:** Der Proxy muss den ursprünglichen `Host`-Header durchreichen (nginx: `proxy_set_header Host $host;`). Sonst lehnt localize-me Änderungen als fremde Herkunft ab. Läuft localize-me auf `127.0.0.1` und der Proxy auf demselben Rechner, trag dessen Hostnamen mit `--allowed-host` ein.
+- **Reverse Proxy:** Der Proxy muss den ursprünglichen `Host`-Header durchreichen (nginx: `proxy_set_header Host $http_host;`) oder du trägst die öffentliche Adresse als `PUBLIC_ORIGIN` ein. Sonst lehnt localize-me Änderungen als fremde Herkunft ab. Läuft localize-me auf `127.0.0.1` und der Proxy auf demselben Rechner, trag dessen Hostnamen mit `--allowed-host` ein. Unter einem Pfad statt auf einer eigenen Domain: siehe [Pfadpräfix](#hinter-einem-reverse-proxy-mit-pfadpräfix).
 - **Mehrere Personen gleichzeitig** können arbeiten, alle offenen Tabs sehen Änderungen sofort. Bearbeiten zwei Leute denselben Text, gilt der zuletzt gespeicherte. Zwei Exporte gleichzeitig verhindert localize-me.
 - **Netzlaufwerke:** Auf eingebundenen Freigaben (SMB/NFS) bemerkt localize-me oft nicht, wenn *andere Rechner* die Datei ändern. Dann den Container neu starten, sonst überschreibt die nächste Bearbeitung in der Oberfläche diese Änderung. Wenn ihr die Datei nur über die Oberfläche ändert, betrifft euch das nicht.
+
+## Hinter einem Reverse Proxy mit Pfadpräfix
+
+localize-me kann unter einem Pfad laufen, den ein vorgelagerter Proxy vor der Weiterleitung entfernt:
+
+```
+Browser  https://tools.example.org/localize-engagement/api/project
+Proxy    entfernt /localize-engagement
+Server   /api/project
+```
+
+Der Browser kennt den Präfix, der Server bekommt nur gekürzte Pfade und bietet seine Routen weiter ohne Präfix an. Einen eigenen Adapter vor localize-me braucht es dafür nicht.
+
+### Einstellungen
+
+| Umgebungsvariable        | CLI-Option             | Server-API       | Bedeutung |
+| ------------------------ | ---------------------- | ---------------- | --------- |
+| `PUBLIC_BASE_PATH`       | `--public-base-path`   | `publicBasePath` | Öffentlicher Pfadpräfix, z. B. `/localize-engagement`. Abschließende Slashes werden entfernt, `/` oder leer heißt kein Präfix. |
+| `PUBLIC_ORIGIN`          | `--public-origin`      | `publicOrigin`   | Öffentliche Origin ohne Pfad, z. B. `https://tools.example.org`. Nötig, wenn der Proxy den `Host` ändert oder TLS beendet. |
+| `PUBLIC_TRUSTED_PROXIES` | `--trusted-proxy`      | `trustedProxies` | Kommagetrennte IP-Adressen und CIDR-Bereiche (API: auch als Array). Nur von diesen direkten Gegenstellen gelten `X-Forwarded-Host` und `X-Forwarded-Proto`. Standard: keiner. |
+
+Die CLI-Option hat Vorrang vor der Umgebungsvariable. Alle Einstellungen sind optional. Ohne sie läuft localize-me wie bisher, lokal und auf der Root einer Domain.
+
+Beim Start wird geprüft. Der Präfix darf nur `A-Z a-z 0-9 . _ ~ -` und `/` enthalten; `%`-Kodierung, `..`, `//`, Query und Host sind nicht erlaubt. `PUBLIC_ORIGIN` lässt keinen Pfad, keine Zugangsdaten und keine Platzhalter zu. `localize-me export` wertet diese Einstellungen nicht aus.
+
+**Fehlende oder ungültige Werte** stoppen die CLI nicht. Ein ungültiger Wert steht in der Serverausgabe und wird ignoriert, es gilt die sichere Seite: kein Präfix, keine zusätzliche Origin, kein vertrauenswürdiger Proxy. Die Oberfläche zeigt oben an, was zu tun ist:
+
+| Situation | Hinweis |
+| --------- | ------- |
+| Wert ungültig | Variable und Meldung aus der Prüfung |
+| Seite läuft unter einem Pfad, `PUBLIC_BASE_PATH` fehlt | Der passende Wert, z. B. `PUBLIC_BASE_PATH=/tools/app` |
+| Server würde Änderungen von dieser Adresse ablehnen, `PUBLIC_ORIGIN` fehlt | Der passende Wert, z. B. `PUBLIC_ORIGIN=https://tools.example.org` |
+| Oberfläche startet gar nicht, z. B. Aufruf ohne abschließenden Slash oder falscher Präfix | Allgemeiner Hinweis auf `PUBLIC_BASE_PATH` nach 3 Sekunden |
+
+Lokal und auf der Root einer Domain erscheint nichts, dort fehlt auch nichts. Der Hinweis nennt nur Variablennamen und öffentliche Adressen, die der Browser ohnehin kennt, sowie den falschen Wert selbst. Geheimnisse gehören nicht in diese Variablen.
+
+Eine `.env`-Datei liest localize-me nicht selbst. Variablen kommen aus der Umgebung des Prozesses, z. B. aus den Einstellungen des Containers oder mit `node --env-file=.env node_modules/.bin/localize-me dev`.
+
+`createServer` bleibt streng und wirft `ConfigError`, außer du übergibst `lenientPublicConfig: true`.
+
+**Neustart oder Neubuild?** Ein Neustart des Prozesses genügt, ein Neubuild ist nie nötig. Die Werte werden beim Start gelesen, das Präfix steht nur in der ausgelieferten `index.html` (`no-store`). CSS, JS und Schriften unter `/assets/` enthalten ihn nicht und sind für jede Konfiguration identisch, deshalb dürfen sie unveränderlich gecacht werden. Dasselbe Artefakt läuft so mit beliebigen Präfixen.
+
+### Beispiel: nginx
+
+```nginx
+location = /localize-engagement {
+    return 308 /localize-engagement/;
+}
+
+location /localize-engagement/ {
+    proxy_pass http://127.0.0.1:4848/;         # Der Slash am Ende entfernt den Präfix.
+    proxy_http_version 1.1;
+    proxy_set_header Connection "";
+    proxy_set_header Host $http_host;
+    # Werden nur mit PUBLIC_TRUSTED_PROXIES ausgewertet; setzen überschreibt Werte vom Browser.
+    proxy_set_header X-Forwarded-Host $http_host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_buffering off;                       # Live-Aktualisierung (SSE) nicht puffern
+    proxy_read_timeout 1h;
+    client_max_body_size 2m;
+}
+```
+
+```bash
+PUBLIC_BASE_PATH=/localize-engagement \
+PUBLIC_ORIGIN=https://tools.example.org \
+npx localize-me dev --no-open --port 4848 --file /data/localize.json
+```
+
+Läuft localize-me in einem anderen Container oder auf einem anderen Rechner, starte es zusätzlich mit `--host 0.0.0.0` und erlaube den Port nur für den Proxy.
+
+### Server-API
+
+```js
+import { createServer, listen } from "@alexandercreates/localize-me/src/server.js";
+import { publicConfigFromEnv } from "@alexandercreates/localize-me/src/public-url.js";
+
+const { server } = createServer({
+  file: "/data/localize.json",
+  host: "0.0.0.0",
+  publicBasePath: "/localize-engagement",
+  publicOrigin: "https://tools.example.org",
+  trustedProxies: ["10.0.0.0/8"],
+  // oder aus der Umgebung: ...publicConfigFromEnv(),
+});
+await listen(server, { port: 4848, host: "0.0.0.0" });
+```
+
+`createServer` liest bewusst keine Umgebungsvariablen, das übernimmt die CLI bzw. `publicConfigFromEnv()`.
+
+Eigene Routen hängst du mit `extraRoutes` hinter dieselben Sicherheitsprüfungen. Redirects laufen über die mitgegebene Funktion, nicht über einen eigenen `Location`-Header:
+
+```js
+createServer({
+  file,
+  extraRoutes(req, res, { url, redirect }) {
+    if (url.pathname !== "/start") return false;
+    redirect("/?willkommen=1#oben");                 // → /localize-engagement/?willkommen=1#oben
+    return true;
+  },
+});
+```
+
+| Ziel | Ergebnis im `Location`-Header |
+| ---- | ----------------------------- |
+| `/x?y=1#f`, `x`, `../x` | `/localize-engagement/x…`, relativ zur aktuellen Route aufgelöst |
+| `/localize-engagement/x` | unverändert, kein zweiter Präfix |
+| `http://<Host dieser Anfrage>/x`, `<PUBLIC_ORIGIN>/x` | `/localize-engagement/x`, ohne Host |
+| fremder Host, anderer Port oder anderes Schema, `//fremd.example/x`, `mailto:` | unverändert |
+
+Host-Vergleiche sind exakt über Schema, Host und Port, ohne Wildcards oder Suffixe. `redirect` filtert keine Open Redirects: Prüfe Rücksprungziele aus Nutzereingaben in deiner Route. Ein eigener Pfad, der genauso beginnt wie der Präfix, gilt als bereits präfixiert.
+
+### Was das Deployment einstellen muss
+
+1. **Proxy:** Präfix entfernen, Antworten nicht puffern, lange Verbindungen für `/api/events` zulassen.
+2. **Start:** `localize-me dev --no-open --host 0.0.0.0` (oder `--host 127.0.0.1` bei Proxy auf demselben Rechner) und `PORT`.
+3. **`PUBLIC_BASE_PATH`** auf den öffentlichen Präfix setzen.
+4. **Herkunft**, genau eine dieser Möglichkeiten:
+   - `PUBLIC_ORIGIN` auf die öffentliche Origin setzen (empfohlen, feste Adresse).
+   - `PUBLIC_TRUSTED_PROXIES` auf den Adressbereich des Proxys setzen, wenn es mehrere öffentliche Adressen gibt. Der Proxy muss dann `X-Forwarded-Host` und `X-Forwarded-Proto` selbst setzen und Werte vom Browser überschreiben. Das RFC-7239-Feld `Forwarded` wird nicht ausgewertet.
+5. **`/data`** als persistentes Volume, siehe [Server](#für-beide-varianten).
+
+Fehlt Punkt 4 und ändert der Proxy den `Host`, schlagen Schreibzugriffe mit 403 fehl. Lesen funktioniert weiter, die Oberfläche zeigt dazu einen Hinweis.
+
+### Grenzen
+
+- **Vorgelagerte Anmeldung (Azure Easy Auth, oauth2-proxy o. Ä.):** Solche Dienste antworten, bevor eine Anfrage den Node-Prozess erreicht. Ihre Redirects (z. B. auf `/.auth/login/…` und nach dem Login zurück) und ihre Cookies (Pfad, Domain, `Secure`) kann localize-me weder sehen noch korrigieren. Sie müssen in diesem Dienst bzw. am Gateway passen: Die Anmelde- und Rücksprung-URLs müssen über den öffentlichen Präfix erreichbar und beim Identity Provider eingetragen sein, und der Dienst muss die öffentliche Adresse kennen (bei Easy Auth: Einstellung `forwardProxy` in den Auth-Einstellungen, `post_login_redirect_uri`).
+- **Cookies:** localize-me setzt selbst keine, an Path, Domain oder `Secure` ist deshalb nichts einzustellen.
+- **Kein Login:** Der Präfix ist keine Zugriffskontrolle. Es gilt weiter der Hinweis unter [Server](#im-team-auf-einem-server-docker).
+- **Lange Verbindungen:** Trennt ein Gateway `/api/events` nach einer Weile, verbindet sich die Oberfläche von selbst neu und lädt den aktuellen Stand. Dazwischen zeigt sie kurz „Keine Verbindung zum Server“.
+- **Präfix erhaltender Proxy:** Ein Proxy, der den Präfix *nicht* entfernt, wird nicht unterstützt. Der Server antwortet dann mit 404.
 
 ## Dateiformat
 
@@ -416,6 +551,7 @@ npm run dev     # Oberfläche mit Hot Reload, Texte aus example/localize.json
 npm run build   # baut die Oberfläche nach ui/
 npm start       # gebaute Version so starten, wie Nutzer sie bekommen
 npm test
+npm run test:e2e   # baut und prüft das echte Build hinter einem Proxy mit Pfadpräfix (mit Chrome auch im Browser)
 ```
 
 Die Oberfläche ist mit Svelte 5 und Vite gebaut, der Quellcode liegt in `web/`. Svelte und Vite sind nur Entwicklungs-Abhängigkeiten: `npm pack` bzw. `npm publish` baut vorher automatisch nach `ui/`, das veröffentlichte Paket hat keine Abhängigkeiten. Platzhalter-Logik und CSV-Aufbau (`src/placeholders.js`, `src/csv.js`) teilen sich Server, CLI und Oberfläche.

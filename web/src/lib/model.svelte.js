@@ -1,6 +1,7 @@
 import { check } from "@shared/placeholders.js";
 import { checkPlural, isFilled, isPluralKey, isPluralValue, textOf } from "@shared/plurals.js";
 import { onlyOf } from "@shared/platforms.js";
+import { publicUrl, unconfiguredPrefix } from "./urls.js";
 
 // Einstellungen pro Browser (Zielsprache, Export-Optionen). Fehlt localStorage, gelten die Standards.
 export const prefs = {
@@ -26,6 +27,7 @@ class Model {
   exportOpen = $state(false);
   addLangOpen = $state(false);
   toast = $state(null);
+  setupNotices = $state([]); // { variable, message } – was an der Serverkonfiguration fehlt
 
   base = $derived(this.project?.base ?? "");
   languages = $derived(this.project?.languages ?? []);
@@ -105,7 +107,7 @@ class Model {
   async request(method, url, body) {
     let res;
     try {
-      res = await fetch(url, {
+      res = await fetch(publicUrl(url), {
         method,
         headers: body ? { "Content-Type": "application/json" } : {},
         body: body ? JSON.stringify(body) : undefined,
@@ -146,8 +148,28 @@ class Model {
     return !error;
   }
 
+  /** Sammelt, was die Konfiguration verhindert. Schlägt die Abfrage fehl, meldet das schon die Verbindungsanzeige. */
+  async checkSetup() {
+    const prefix = unconfiguredPrefix();
+    if (prefix) {
+      // API-Aufrufe erreichen den Server ohne Präfix nicht, mehr lässt sich hier also nicht herausfinden.
+      this.setupNotices = [{ variable: "PUBLIC_BASE_PATH", message: `Diese Seite läuft unter ${prefix}, dem Server fehlt aber der Präfix. Deshalb lassen sich keine Texte laden.`, fix: `PUBLIC_BASE_PATH=${prefix}` }];
+      return;
+    }
+    try {
+      const res = await fetch(publicUrl("/api/setup?" + new URLSearchParams({ origin: location.origin })));
+      if (!res.ok) return;
+      const { problems, originAccepted } = await res.json();
+      const notices = [...problems];
+      if (!originAccepted && !problems.some((p) => p.variable === "PUBLIC_ORIGIN")) {
+        notices.push({ variable: "PUBLIC_ORIGIN", message: `Der Server kennt die Adresse ${location.origin} nicht. Du kannst Texte lesen, aber Änderungen werden nicht gespeichert.`, fix: `PUBLIC_ORIGIN=${location.origin}` });
+      }
+      this.setupNotices = notices;
+    } catch {}
+  }
+
   connect() {
-    const events = new EventSource("/api/events");
+    const events = new EventSource(publicUrl("/api/events"));
     events.addEventListener("change", () => this.load());
     events.addEventListener("open", () => {
       if (this.connection === "lost") this.load();
