@@ -1,22 +1,34 @@
 <script>
+  import { isTrackingValue } from "@shared/tracking.js";
   import { app, trackingUrl } from "./model.svelte.js";
   import KeyName from "./ui/KeyName.svelte";
   import Icon from "./ui/Icon.svelte";
 
-  let { section, name, item } = $props();
+  let { section, key, item } = $props();
 
-  const url = $derived(trackingUrl(section, name));
-  const rename = (next) => app.mutate("PATCH", url, { name: next });
+  const url = $derived(trackingUrl(section, key));
+  const rename = (next) => app.mutate("PATCH", url, { key: next });
+
+  // Der Value ist Pflicht: Leeren stellt den alten wieder her. Sonst bleibt er Zeichen für Zeichen, wie getippt.
+  function saveValue(e) {
+    const value = e.currentTarget.value;
+    if (value === (item.value ?? "")) return;
+    if (!isTrackingValue(value)) {
+      e.currentTarget.value = item.value ?? "";
+      app.notify(`„${key}“ braucht einen Value. Der bisherige bleibt erhalten.`, "error");
+      return;
+    }
+    app.run("PATCH", url, { value });
+  }
+  function fieldKey(e, restore) {
+    if (e.key === "Enter") { e.preventDefault(); e.currentTarget.blur(); }
+    if (e.key === "Escape") { e.currentTarget.value = restore; e.currentTarget.blur(); }
+  }
 
   function saveDescription(e) {
     const value = e.currentTarget.value.trim();
     if (value !== (item.description || "")) app.run("PATCH", url, { description: value });
   }
-  function descriptionKey(e) {
-    if (e.key === "Enter") { e.preventDefault(); e.currentTarget.blur(); }
-    if (e.key === "Escape") { e.currentTarget.value = item.description || ""; e.currentTarget.blur(); }
-  }
-
   let armed = $state(false);
   let disarm;
   async function remove() {
@@ -27,23 +39,39 @@
     }
     clearTimeout(disarm);
     armed = false;
-    await app.run("DELETE", url, null, `„${name}“ gelöscht.`);
+    await app.run("DELETE", url, null, `„${key}“ gelöscht.`);
   }
 </script>
 
-<div class="row" role="row" data-name={name}>
-  <div class="cell name" role="cell"><KeyName {name} onrename={rename} /></div>
+<div class="row" role="row" data-key={key}>
+  <div class="cell name" role="cell"><KeyName name={key} onrename={rename} /></div>
+
+  <div class="cell" role="cell">
+    <span class="mobile-label label">Value</span>
+    <input
+      class="field-input mono"
+      value={item.value ?? ""}
+      placeholder="Value fehlt"
+      autocomplete="off"
+      spellcheck="false"
+      aria-required="true"
+      aria-invalid={!isTrackingValue(item.value)}
+      aria-label={`${key}: Value`}
+      onblur={saveValue}
+      onkeydown={(e) => fieldKey(e, item.value ?? "")}
+    />
+  </div>
 
   <div class="cell" role="cell">
     <span class="mobile-label label">Beschreibung</span>
     <input
-      class="description"
+      class="field-input"
       value={item.description || ""}
       placeholder="Beschreibung ergänzen"
       autocomplete="off"
-      aria-label={`${name}: Beschreibung`}
+      aria-label={`${key}: Beschreibung`}
       onblur={saveDescription}
-      onkeydown={descriptionKey}
+      onkeydown={(e) => fieldKey(e, item.description || "")}
     />
   </div>
 
@@ -51,7 +79,7 @@
     <button
       type="button"
       class={["delete", armed && "armed"]}
-      aria-label={armed ? `„${name}“ wirklich löschen` : `„${name}“ löschen`}
+      aria-label={armed ? `„${key}“ wirklich löschen` : `„${key}“ löschen`}
       title={armed ? "Nochmal klicken zum Löschen" : "Löschen"}
       onclick={remove}
       onblur={() => (armed = false)}
@@ -71,13 +99,14 @@
   .cell { min-width: 0; }
   .mobile-label { display: none; }
 
-  .description {
-    width: 100%; height: 38px; padding: 0 8px; font-size: 14px;
+  .field-input {
+    width: 100%; height: 38px; padding: 0 8px; font-size: 14px; text-overflow: ellipsis;
     border: 1px solid transparent; border-radius: var(--radius-sm); background: transparent; color: var(--text);
   }
-  .description::placeholder { color: var(--text-subtle); }
-  .description:hover { background: var(--bg-sunken); }
-  .description:focus { outline: none; background: var(--bg-surface); border-color: var(--text); box-shadow: var(--ring); }
+  .field-input::placeholder { color: var(--text-subtle); }
+  .field-input[aria-invalid="true"] { border-color: var(--missing); background: var(--missing-soft); }
+  .field-input:hover { background: var(--bg-sunken); }
+  .field-input:focus { outline: none; background: var(--bg-surface); border-color: var(--text); box-shadow: var(--ring); }
 
   .actions { padding-top: 3px; display: flex; justify-content: flex-end; }
   .delete {
@@ -93,6 +122,6 @@
     .name { padding-right: 40px; }
     .actions { position: absolute; top: var(--space-16); right: var(--space-12); padding: 0; }
     .mobile-label { display: block; margin-bottom: 4px; }
-    .description { border-color: var(--border); }
+    .field-input { border-color: var(--border); }
   }
 </style>

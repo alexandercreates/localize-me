@@ -19,3 +19,20 @@ export function exportsTo(project, key, platform) {
 export function resourceName(key) {
   return key.replace(/[.\-]/g, "_");
 }
+
+/** Text zwischen den Anführungszeichen einer .strings-Datei. */
+export function escapeStrings(text) {
+  return text.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\n/g, "\\n").replace(/\r/g, "\\r").replace(/\t/g, "\\t");
+}
+
+/** Inhalt von <string> in einer Android-Ressource. */
+export function escapeXml(text) {
+  let out = text
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    .replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/'/g, "\\'")
+    .replace(/\n/g, "\\n").replace(/\t/g, "\\t");
+  if (/^[@?]/.test(out)) out = "\\" + out;
+  // Android kürzt Leerzeichen am Rand und fasst mehrere zusammen – in Anführungszeichen bleiben sie erhalten.
+  if (/^\s|\s$|\s\s/.test(text)) out = `"${out}"`;
+  return out;
+}

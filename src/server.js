@@ -316,22 +316,22 @@ export function createServer({
         return send(res, 200, projectPayload());
       }
 
-      // POST /api/tracking/:section {name, description?}
+      // POST /api/tracking/:section {key, value?, description?}
       if (method === "POST" && parts[1] === "tracking" && parts.length === 3) {
-        const { name, ...fields } = await readJson(req);
-        store.addTrackingItem(parts[2], name, fields);
+        const { key, ...fields } = await readJson(req);
+        store.addTrackingItem(parts[2], key, fields);
         broadcast("change");
         return send(res, 201, projectPayload());
       }
 
-      // PATCH /api/tracking/:section/:name {name?, description?}
+      // PATCH /api/tracking/:section/:key {key?, value?, description?}
       if (method === "PATCH" && parts[1] === "tracking" && parts.length === 4) {
         store.updateTrackingItem(parts[2], parts[3], await readJson(req));
         broadcast("change");
         return send(res, 200, projectPayload());
       }
 
-      // DELETE /api/tracking/:section/:name
+      // DELETE /api/tracking/:section/:key
       if (method === "DELETE" && parts[1] === "tracking" && parts.length === 4) {
         store.deleteTrackingItem(parts[2], parts[3]);
         broadcast("change");

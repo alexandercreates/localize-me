@@ -28,20 +28,22 @@
   },
   "tracking": {
     "screens": {
-      "home": {
+      "startseite": {
+        "value": "app/startseite",
         "description": "Startseite nach dem Login"
       }
     },
     "events": {
-      "list_item_opened": {
+      "eintrag_geoeffnet": {
+        "value": "List Item Opened",
         "description": "Eintrag in der Liste angetippt"
       }
     },
     "parameters": {
       "item_id": {
+        "value": "item_id",
         "description": "ID des Eintrags"
-      },
-      "position": {}
+      }
     }
   }
 }

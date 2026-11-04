@@ -1,13 +1,13 @@
 # localize-me
 
-Schlanke Übersetzungsverwaltung für iOS- und Android-Apps. Keys anlegen, Texte übersetzen, als `Localizable.strings`/`strings.xml` oder CSV exportieren – ohne Account, ohne Cloud, ohne Abhängigkeiten. Dazu verwaltet localize-me die [Tracking-Namen](#tracking) für Screens, Events und Parameter. Alles liegt als `localize.json` in deinem Projekt und lässt sich ganz normal mit Git versionieren.
+Schlanke Übersetzungsverwaltung für iOS- und Android-Apps. Keys anlegen, Texte übersetzen, als `Localizable.strings`/`strings.xml` oder CSV exportieren – ohne Account, ohne Cloud, ohne Abhängigkeiten. Dazu verwaltet localize-me die [Tracking-Werte](#tracking) für Screens, Events und Parameter. Alles liegt als `localize.json` in deinem Projekt und lässt sich ganz normal mit Git versionieren.
 
 Läuft lokal auf deinem Rechner oder zentral fürs ganze Team auf einem Server. Auf Wunsch wird jeder Export automatisch ein Git-Commit.
 
 - [Schnellstart](#schnellstart)
 - [Platzhalter](#platzhalter) und [Plurals](#plurals)
 - [Texte nur für iOS oder Android](#texte-nur-für-ios-oder-android)
-- [Tracking](#tracking): Namen für Screens, Events und Parameter als `.strings`- und XML-Datei
+- [Tracking](#tracking): Screens, Events und Parameter als `.strings`- und XML-Datei
 - [Export](#export) ins App-Projekt oder als CSV
 - [Optionen für die Oberfläche](#optionen-für-die-oberfläche)
 - [Beim Export versionieren](#beim-export-versionieren) (Commit, Push, eigener Befehl)
@@ -129,14 +129,23 @@ In der `localize.json` steht das unter `only`:
 
 ## Tracking
 
-Unter **Dateien → Tracking** legst du die Namen für Screens, Events und Parameter an. localize-me schreibt daraus einfache String-Dateien. Einen Tracking-Layer erzeugt es nicht: Wie die Namen zu deinem Analytics-Dienst kommen, entscheidet dein App-Code.
+Unter **Dateien → Tracking** legst du Screens, Events und Parameter an, jeweils mit **Key** und **Value**. localize-me schreibt daraus einfache String-Dateien. Einen Tracking-Layer erzeugt es nicht: Wie die Werte zu deinem Analytics-Dienst kommen, entscheidet dein App-Code.
+
+| Typ | Eingabe | iOS | Android |
+| --- | ------- | --- | ------- |
+| Screen | `startseite` = `app/startseite` | `"screen.startseite" = "app/startseite";` | `R.string.screen_startseite` |
+| Event | `kauf` = `Order Completed` | `"event.kauf" = "Order Completed";` | `R.string.event_kauf` |
+| Parameter | `item_id` = `item_id` | `"parameter.item_id" = "item_id";` | `R.string.parameter_item_id` |
+
+- **Key:** Beginnt mit einem Buchstaben und enthält nur Buchstaben, Ziffern, Punkt, Unterstrich und Bindestrich. Das Präfix ergänzt localize-me je nach Typ, auf iOS mit `.`, auf Android mit `_`. Tippst du es mit, entsteht es nicht doppelt.
+- **Value:** Pflichtfeld. Jeder beliebige Text ist erlaubt, er kommt genau so beim Analytics-Dienst an. Fehlt ein Value in der `localize.json`, zeigt die Oberfläche den Eintrag an, und der Export bricht mit einer Meldung ab, bis er nachgetragen ist.
 
 **iOS:** `Tracking.strings`
 
 ```
-"screen.home" = "home";
+"screen.startseite" = "app/startseite";
 
-"event.Order Completed" = "Order Completed";
+"event.kauf" = "Order Completed";
 
 /* Artikelnummer */
 "parameter.item_id" = "item_id";
@@ -146,28 +155,28 @@ Unter **Dateien → Tracking** legst du die Namen für Screens, Events und Param
 
 ```xml
 <resources>
-    <string name="screen_home" translatable="false">home</string>
+    <string name="screen_startseite" translatable="false">app/startseite</string>
 
-    <string name="event_Order_Completed" translatable="false">Order Completed</string>
+    <string name="event_kauf" translatable="false">Order Completed</string>
 
     <!-- Artikelnummer -->
     <string name="parameter_item_id" translatable="false">item_id</string>
 </resources>
 ```
 
-So liest du einen Namen aus:
+So liest du einen Wert aus:
 
 ```swift
-let event = NSLocalizedString("event.Order Completed", tableName: "Tracking", comment: "")
+let screen = NSLocalizedString("screen.startseite", tableName: "Tracking", comment: "")
 ```
 
 ```kotlin
-val event = getString(R.string.event_Order_Completed)
+val screen = getString(R.string.screen_startseite)
 ```
 
-Der Name kommt genau so beim Analytics-Dienst an und darf Buchstaben, Ziffern, Leerzeichen, Punkt, Unterstrich und Bindestrich enthalten. Tracking-Namen werden nicht übersetzt, deshalb gibt es sie nur einmal und nicht je Sprache.
+Tracking-Werte werden nicht übersetzt, deshalb gibt es sie nur einmal und nicht je Sprache.
 
-Auf Android landen sie wie die Texte in `R.string`. Ergeben zwei Namen im selben Bereich denselben Android-Namen (`item_id` und `item.id`), wird der zweite abgewiesen. Kollidiert ein Name mit einem Key aus `strings.xml`, bricht der Android-Export mit einer Meldung ab.
+Auf Android landen sie wie die Texte in `R.string`. Ergeben zwei Keys im selben Bereich denselben Android-Namen (`item_id` und `item.id`), wird der zweite abgewiesen. Kollidiert ein Eintrag mit einem Text-Key aus `strings.xml`, bricht der Android-Export mit einer Meldung ab.
 
 Die Zielordner stehen in der `localize.json` unter `output.tracking`. Das können dieselben Ordner wie für die Texte sein:
 
@@ -180,9 +189,9 @@ Die Zielordner stehen in der `localize.json` unter `output.tracking`. Das könne
     }
   },
   "tracking": {
-    "screens": { "home": {} },
-    "events": { "Order Completed": {} },
-    "parameters": { "item_id": { "description": "Artikelnummer" } }
+    "screens": { "startseite": { "value": "app/startseite" } },
+    "events": { "kauf": { "value": "Order Completed" } },
+    "parameters": { "item_id": { "value": "item_id", "description": "Artikelnummer" } }
   }
 }
 ```

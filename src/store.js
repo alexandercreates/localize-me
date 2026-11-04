@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { CATEGORIES, isPluralKey, isPluralValue } from "./plurals.js";
 import { ONLY_PLATFORMS } from "./platforms.js";
-import { normalizeTracking, TRACKING_NAME_PATTERN, TRACKING_SECTIONS, trackingResourceName } from "./tracking.js";
+import { isTrackingValue, normalizeTracking, TRACKING_KEY_PATTERN, TRACKING_KEY_RULE, TRACKING_SECTIONS, trackingResourceName, withoutTrackingPrefix } from "./tracking.js";
 
 // localize.json – eine Datei, git-freundlich: Keys alphabetisch, eine Zeile pro Sprache.
 //
@@ -257,32 +257,33 @@ export class Store {
 
   // ---------- Tracking ----------
 
-  addTrackingItem(section, name, fields = {}) {
+  addTrackingItem(section, key, fields = {}) {
     const tracking = this.#tracking(section);
-    name = String(name || "").trim();
-    this.#checkTrackingName(section, name);
-    tracking[section][name] = this.#cleanTrackingFields(fields, {});
+    key = withoutTrackingPrefix(section, String(key || "").trim());
+    this.#checkTrackingKey(section, key);
+    this.#checkTrackingValue(fields.value);
+    tracking[section][key] = this.#cleanTrackingFields(fields, {});
     this.save();
   }
 
-  /** Ändert `description`; mit `name` wird umbenannt. */
-  updateTrackingItem(section, name, fields = {}) {
+  /** Ändert `value` oder `description`; mit `key` wird umbenannt. */
+  updateTrackingItem(section, key, fields = {}) {
     const tracking = this.#tracking(section);
-    if (!Object.hasOwn(tracking[section], name)) throw new ValidationError(`„${name}“ gibt es nicht.`);
-    const item = this.#cleanTrackingFields(fields, tracking[section][name]);
-    const next = typeof fields.name === "string" ? fields.name.trim() : name;
-    if (next !== name) {
-      this.#checkTrackingName(section, next, name);
-      delete tracking[section][name];
+    if (!Object.hasOwn(tracking[section], key)) throw new ValidationError(`„${key}“ gibt es nicht.`);
+    const item = this.#cleanTrackingFields(fields, tracking[section][key]);
+    const next = typeof fields.key === "string" ? withoutTrackingPrefix(section, fields.key.trim()) : key;
+    if (next !== key) {
+      this.#checkTrackingKey(section, next, key);
+      delete tracking[section][key];
     }
     tracking[section][next] = item;
     this.save();
   }
 
-  deleteTrackingItem(section, name) {
+  deleteTrackingItem(section, key) {
     const tracking = this.#tracking(section);
-    if (!Object.hasOwn(tracking[section], name)) throw new ValidationError(`„${name}“ gibt es nicht.`);
-    delete tracking[section][name];
+    if (!Object.hasOwn(tracking[section], key)) throw new ValidationError(`„${key}“ gibt es nicht.`);
+    delete tracking[section][key];
     this.save();
   }
 
@@ -292,21 +293,27 @@ export class Store {
     return this.project.tracking;
   }
 
-  #checkTrackingName(section, name, previous) {
-    if (!name) throw new ValidationError("Gib einen Namen ein, zum Beispiel item_id.");
-    if (!TRACKING_NAME_PATTERN.test(name)) {
-      throw new ValidationError("Namen beginnen mit einem Buchstaben und enthalten nur Buchstaben, Ziffern, Leerzeichen, Punkt, Unterstrich und Bindestrich.");
-    }
+  #checkTrackingKey(section, key, previous) {
+    if (!key) throw new ValidationError("Gib einen Key ein, zum Beispiel startseite.");
+    if (!TRACKING_KEY_PATTERN.test(key)) throw new ValidationError(TRACKING_KEY_RULE);
     const items = this.project.tracking[section];
-    if (Object.hasOwn(items, name)) throw new ValidationError(`„${name}“ gibt es schon.`);
-    // Beide Namen wären auf Android dieselbe Ressource, das würde erst beim Export auffallen.
-    const id = trackingResourceName(section, name);
+    if (Object.hasOwn(items, key)) throw new ValidationError(`„${key}“ gibt es schon.`);
+    // Beide Keys wären auf Android dieselbe Ressource, das würde erst beim Export auffallen.
+    const id = trackingResourceName(section, key);
     const twin = Object.keys(items).find((other) => other !== previous && trackingResourceName(section, other) === id);
-    if (twin) throw new ValidationError(`„${name}“ und „${twin}“ ergeben beide den Android-Namen ${id}.`);
+    if (twin) throw new ValidationError(`„${key}“ und „${twin}“ ergeben beide den Android-Namen ${id}.`);
+  }
+
+  #checkTrackingValue(value) {
+    if (!isTrackingValue(value)) throw new ValidationError("Gib einen Value ein, zum Beispiel app/startseite.");
   }
 
   #cleanTrackingFields(fields, current) {
     const item = { ...current };
+    if (Object.hasOwn(fields, "value")) {
+      this.#checkTrackingValue(fields.value);
+      item.value = fields.value;
+    }
     if (Object.hasOwn(fields, "description")) {
       if (typeof fields.description !== "string") throw new ValidationError("Die Beschreibung muss eine Zeichenkette sein.");
       item.description = fields.description.trim();

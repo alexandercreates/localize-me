@@ -1,5 +1,5 @@
 <script>
-  import { buildTrackingStrings, buildTrackingXml, checkTracking, TRACKING_FILENAMES } from "@shared/tracking.js";
+  import { buildTrackingStrings, buildTrackingXml, checkTracking, isTrackingValue, TRACKING_FILENAMES, TRACKING_KEY_PATTERN, trackingResourceName, trackingStringsKey, withoutTrackingPrefix } from "@shared/tracking.js";
   import { app, prefs, trackingUrl } from "./model.svelte.js";
   import TrackingRow from "./TrackingRow.svelte";
   import Icon from "./ui/Icon.svelte";
@@ -8,9 +8,9 @@
   let { searchInput = $bindable() } = $props();
 
   const SECTIONS = {
-    screens: { label: "Screens", one: "Screen", placeholder: "home", empty: "Leg oben den ersten Screen an." },
-    events: { label: "Events", one: "Event", placeholder: "purchase_completed", empty: "Leg oben das erste Event an." },
-    parameters: { label: "Parameter", one: "Parameter", placeholder: "item_id", empty: "Leg oben den ersten Parameter an." },
+    screens: { label: "Screens", one: "Screen", key: "startseite", value: "app/startseite", empty: "Leg oben den ersten Screen an." },
+    events: { label: "Events", one: "Event", key: "kauf", value: "Order Completed", empty: "Leg oben das erste Event an." },
+    parameters: { label: "Parameter", one: "Parameter", key: "item_id", value: "item_id", empty: "Leg oben den ersten Parameter an." },
   };
   const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
 
@@ -20,14 +20,17 @@
   const rows = $derived.by(() => {
     const q = app.trackingSearch.trim().toLowerCase();
     return Object.entries(app.tracking[section])
-      .filter(([name, item]) => !q || name.toLowerCase().includes(q) || (item.description || "").toLowerCase().includes(q))
-      .map(([name, item]) => ({ name, item }));
+      .filter(([key, item]) => !q || [key, item.value, item.description].some((text) => typeof text === "string" && text.toLowerCase().includes(q)))
+      .map(([key, item]) => ({ key, item }));
   });
   const total = $derived(Object.keys(app.tracking[section]).length);
 
   // ---------- Anlegen ----------
-  let nameInput = $state();
-  let name = $state("");
+  let keyInput = $state();
+  let valueInput = $state();
+  let errorField = $state("key"); // key | value, damit das richtige Feld markiert ist
+  let key = $state("");
+  let value = $state("");
   let description = $state("");
   let error = $state("");
   let busy = $state(false);
@@ -35,15 +38,25 @@
   async function add(e) {
     e.preventDefault();
     if (busy) return;
-    const trimmed = name.trim();
+    const trimmed = key.trim();
+    if (trimmed && !isTrackingValue(value)) {
+      errorField = "value";
+      error = `Gib einen Value ein, zum Beispiel ${meta.value}.`;
+      return valueInput?.focus();
+    }
+    errorField = "key";
     busy = true;
-    error = (await app.mutate("POST", trackingUrl(section), { name: trimmed, description })) || "";
+    error = (await app.mutate("POST", trackingUrl(section), { key: trimmed, value, description })) || "";
     busy = false;
-    if (error) return nameInput?.focus();
-    app.notify(`„${trimmed}“ angelegt.`);
-    name = description = "";
-    nameInput?.focus();
+    if (error) return keyInput?.focus();
+    app.notify(`„${withoutTrackingPrefix(section, trimmed)}“ angelegt.`);
+    key = value = description = "";
+    keyInput?.focus();
   }
+
+  // Zeigt beim Tippen, was in den Dateien ankommt.
+  const typedKey = $derived(withoutTrackingPrefix(section, key.trim()));
+  const sampleKey = $derived(TRACKING_KEY_PATTERN.test(typedKey) ? typedKey : meta.key);
 
   function choose(next) {
     app.setTrackingSection(next);
@@ -68,7 +81,7 @@
 <header class="top">
   <div class="title">
     <h1>Tracking</h1>
-    <p>Namen für Screens, Events und Parameter festlegen. Daraus entsteht je eine einfache Datei für iOS und Android.</p>
+    <p>Screens, Events und Parameter mit Key und Value festlegen. Daraus entsteht je eine einfache Datei für iOS und Android.</p>
   </div>
   <Button variant="primary" icon="download" onclick={() => (app.exportOpen = true)}>Exportieren</Button>
 </header>
@@ -76,15 +89,30 @@
 <form class="quick" onsubmit={add}>
   <div class="row">
     <label class="field">
-      <span class="label">{section === "events" ? "Neues" : "Neuer"} {meta.one}</span>
+      <span class="label">Key</span>
       <input
-        bind:this={nameInput}
-        bind:value={name}
+        bind:this={keyInput}
+        bind:value={key}
         class="mono"
-        placeholder={meta.placeholder}
+        placeholder={meta.key}
         autocomplete="off"
         spellcheck="false"
-        aria-invalid={!!error}
+        aria-invalid={!!error && errorField === "key"}
+        aria-describedby={error ? "tracking-error" : "tracking-hint"}
+        oninput={() => (error = "")}
+      />
+    </label>
+    <label class="field">
+      <span class="label">Value</span>
+      <input
+        bind:this={valueInput}
+        bind:value={value}
+        class="mono"
+        placeholder={meta.value}
+        autocomplete="off"
+        spellcheck="false"
+        aria-required="true"
+        aria-invalid={!!error && errorField === "value"}
         aria-describedby={error ? "tracking-error" : "tracking-hint"}
         oninput={() => (error = "")}
       />
@@ -99,7 +127,7 @@
     <p class="error" id="tracking-error" role="alert">{error}</p>
   {:else}
     <p class="hint" id="tracking-hint">
-      Der Name kommt genau so beim Analytics-Dienst an. Auf Android heißt die Ressource dann zum Beispiel <span class="mono">parameter_item_id</span>.
+      Wird zu <span class="mono">{trackingStringsKey(section, sampleKey)}</span> auf iOS und <span class="mono">{trackingResourceName(section, sampleKey)}</span> auf Android.
     </p>
   {/if}
 </form>
@@ -121,12 +149,13 @@
 
 <div class="table" role="table" aria-label={meta.label}>
   <div class="head" role="row">
-    <span role="columnheader" class="label">Name</span>
+    <span role="columnheader" class="label">Key</span>
+    <span role="columnheader" class="label">Value</span>
     <span role="columnheader" class="label">Beschreibung</span>
     <span role="columnheader"><span class="sr-only">Aktionen</span></span>
   </div>
-  {#each rows as { name: itemName, item } (itemName)}
-    <TrackingRow {section} name={itemName} {item} />
+  {#each rows as row (row.key)}
+    <TrackingRow {section} key={row.key} item={row.item} />
   {/each}
   {#if !rows.length}
     <div class="empty">
@@ -155,7 +184,7 @@
     <div class="problems" role="status">
       <Icon name="alert" size={16} />
       <div>
-        <p>Das muss in <span class="mono">localize.json</span> korrigiert werden, bevor die Datei entstehen kann:</p>
+        <p>Das muss korrigiert werden, bevor die Datei entstehen kann:</p>
         <ul>{#each problems as problem}<li>{problem}</li>{/each}</ul>
       </div>
     </div>
@@ -178,7 +207,7 @@
     padding: var(--space-20); border-radius: var(--radius-xl);
     background: var(--bg-surface); border: 1px solid var(--border); box-shadow: var(--shadow-card);
   }
-  .row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr) auto; gap: var(--space-12); align-items: end; }
+  .row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.2fr) auto; gap: var(--space-12); align-items: end; }
   .field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
   .field input {
     width: 100%; height: 40px; padding: 0 12px;
@@ -222,7 +251,7 @@
     background: var(--bg-surface); border: 1px solid var(--border);
     border-radius: var(--radius-xl); overflow: hidden; box-shadow: var(--shadow-card);
   }
-  .table { --tracking-cols: minmax(160px, 320px) minmax(0, 1fr) 40px; }
+  .table { --tracking-cols: minmax(140px, 240px) minmax(0, 1fr) minmax(0, 1fr) 40px; }
   .head {
     display: grid; grid-template-columns: var(--tracking-cols); gap: var(--space-20);
     padding: var(--space-12) var(--space-12) var(--space-12) var(--space-20);

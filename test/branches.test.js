@@ -38,7 +38,7 @@ function setup() {
   git(work, "commit", "-q", "-m", "init");
   git(work, "push", "-q", "-u", "origin", "main");
   // Beide Teile geändert, wie nach einer Sitzung in der Oberfläche.
-  write(file, json({ a: { de: "neu" } }, { screens: { home: {} }, events: {}, parameters: {} }));
+  write(file, json({ a: { de: "neu" } }, { screens: { home: { value: "app/home" } }, events: {}, parameters: {} }));
   const written = [
     { kind: "localizable", file: write(path.join(work, "res", "Localizable.strings"), '"a" = "neu";\n') },
     { kind: "tracking", file: write(path.join(work, "res", "Tracking.strings"), '"screen.home" = "home";\n') },

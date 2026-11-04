@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { convert, parse, specOf } from "./placeholders.js";
-import { exportsTo, resourceName } from "./platforms.js";
+import { escapeStrings, escapeXml, exportsTo, resourceName } from "./platforms.js";
 import { categoriesFor, countOf, isPluralKey, isPluralValue } from "./plurals.js";
 import { LANG_PATTERN } from "./store.js";
 
@@ -56,10 +56,6 @@ function pluralEntry(project, key, lang, platform) {
 
 export function lprojName(code) {
   return code.replace(/_/g, "-") + ".lproj";
-}
-
-function escapeStrings(text) {
-  return text.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\n/g, "\\n").replace(/\r/g, "\\r").replace(/\t/g, "\\t");
 }
 
 export function buildIosStrings(project, lang) {
@@ -117,17 +113,6 @@ export function valuesDir(code, base) {
   if (!region) return `values-${lang}`;
   if (/^([A-Za-z]{2}|\d{3})$/.test(region)) return `values-${lang}-r${region.toUpperCase()}`;
   return `values-b+${lang}+${region}`;
-}
-
-function escapeXml(text) {
-  let out = text
-    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
-    .replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/'/g, "\\'")
-    .replace(/\n/g, "\\n").replace(/\t/g, "\\t");
-  if (/^[@?]/.test(out)) out = "\\" + out;
-  // Android kürzt Leerzeichen am Rand und fasst mehrere zusammen – in Anführungszeichen bleiben sie erhalten.
-  if (/^\s|\s$|\s\s/.test(text)) out = `"${out}"`;
-  return out;
 }
 
 /** Prüft, dass jeder Key einen gültigen, eindeutigen Ressourcennamen ergibt. */
