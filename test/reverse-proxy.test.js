@@ -652,6 +652,11 @@ test("Root-Betrieb ohne Konfiguration bleibt wie bisher", { skip }, async (t) =>
   assert.equal(await to("/a/..//evil.example/x"), "/evil.example/x");
 });
 
+async function waitForOutput(cli, pattern) {
+  for (let i = 0; i < 100 && !pattern.test(cli.output()); i++) await new Promise((resolve) => setTimeout(resolve, 50));
+  assert.match(cli.output(), pattern, "steht in der Serverausgabe");
+}
+
 function runCli(args, env) {
   const cwd = tmp("localize-cli-");
   const child = spawn(process.execPath, [CLI, "dev", "--no-open", ...args], { cwd, env: { ...process.env, ...env, CI: "1" } });
@@ -712,7 +717,8 @@ test("CLI: Ungültige Konfiguration stoppt den Dienst nicht, sondern wird gemeld
     t.after(() => cli.child.kill());
     const actual = await cli.ready;
     port = actual + 1;
-    assert.match(cli.output(), new RegExp(`${variable}.*ignoriert`), "steht in der Serverausgabe");
+    // Die Meldung kommt über stderr, „ready“ hängt an stdout – sie kann also noch unterwegs sein.
+    await waitForOutput(cli, new RegExp(`${variable}.*ignoriert`));
     const setup = await (await fetch(`http://127.0.0.1:${actual}/api/setup`)).json();
     assert.deepEqual(setup.problems.map((p) => p.variable), [variable]);
     assert.equal((await fetch(`http://127.0.0.1:${actual}/`)).status, 200);
