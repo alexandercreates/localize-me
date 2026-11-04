@@ -98,14 +98,16 @@ test("Ein fehlender Value wird nicht ersetzt, der Export bricht ab und schreibt 
 
 test("Value und Beschreibung können nichts in die Datei schmuggeln", () => {
   const separator = String.fromCharCode(0x2028);
-  const evil = `x */ "evil" = "1"; /* y --> <string name="evil">1</string> <!-- z\n"evil2" = "2";\r\n${separator}<evil3/>---`;
+  const evil = `x */ "evil" = "1"; /* y --> <string name="evil">1</string> --!> <!-- z\n"evil2" = "2";\r\n${separator}<evil3/>---`;
   const p = normalize({ keys: {}, tracking: { events: { a: { value: "x", description: evil } } } });
   const strings = buildTrackingStrings(p).split("\n").filter((l) => /evil/.test(l));
   assert.equal(strings.length, 1);
   assert.doesNotMatch(strings[0].replace(/^\/\*/, "").replace(/\*\/$/, ""), /\*\/|\/\*/);
   const xml = buildTrackingXml(p).split("\n").filter((l) => /evil/.test(l));
   assert.equal(xml.length, 1);
-  assert.doesNotMatch(xml[0].trim().replace(/^<!--/, "").replace(/-->$/, ""), /--/);
+  const line = xml[0].trim();
+  assert.ok(line.startsWith("<!--") && line.endsWith("-->"), line);
+  assert.ok(!line.slice("<!--".length, -"-->".length).includes("--"), line);
 
   const asValue = normalize({ keys: {}, tracking: { events: { a: { value: `"; "evil" = "1"; </string><evil/>` } } } });
   assert.match(buildTrackingStrings(asValue), /= "\\"; \\"evil\\" = \\"1\\"; <\/string><evil\/>";/);
