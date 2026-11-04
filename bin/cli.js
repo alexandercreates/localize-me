@@ -8,10 +8,11 @@ import { createServer, listen } from "../src/server.js";
 import { Store } from "../src/store.js";
 import { buildCsv, csvFilename } from "../src/csv.js";
 import { PLATFORMS } from "../src/placeholders.js";
-import { NATIVE_PLATFORMS, configuredOutputs, writeNative } from "../src/native.js";
+import { NATIVE_PLATFORMS } from "../src/native.js";
+import { FILE_KINDS, exportTargets, writeTargets } from "../src/outputs.js";
 import { addScripts } from "../src/project.js";
 import { isPluralValue } from "../src/plurals.js";
-import { afterExport, failed } from "../src/versioning.js";
+import { afterExport, checkBranchName, failed } from "../src/versioning.js";
 import { publicConfigFromEnv } from "../src/public-url.js";
 
 const pkg = JSON.parse(fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "package.json"), "utf8"));
@@ -20,7 +21,7 @@ const HELP = `localize-me ${pkg.version}
 
 Verwendung:
   localize-me [dev]        Oberfläche starten (Standard)
-  localize-me export       Dateien für iOS/Android schreiben bzw. CSV exportieren
+  localize-me export       Texte und Tracking-Namen für iOS/Android schreiben bzw. CSV exportieren
   localize-me init         Start-Skript in package.json eintragen und localize.json anlegen
 
 Optionen für dev:
@@ -39,8 +40,10 @@ Optionen für dev:
   --no-open                Browser nicht automatisch öffnen
 
 Optionen für export:
-  --format <native|csv>    native: Localizable.strings / strings.xml, csv: Tabelle
+  --format <native|csv>    native: Dateien fürs App-Projekt, csv: Tabelle mit den Texten
                            (Standard: native, wenn localize.json "output" enthält, sonst csv)
+  --kind <localizable|tracking>  native: nur diese Dateiart (Standard: alle aus "output",
+                           mit --out: localizable)
   --platform <ios|android|raw>   Plattform (native: Standard alle aus "output"; csv: Standard raw)
   --langs <de,en>          CSV: Sprachen in Spaltenreihenfolge (Standard: alle, Basis zuerst)
   --delimiter <;|,>        CSV: Trennzeichen (Standard: ;)
@@ -52,6 +55,8 @@ Nach dem Export (dev: Button „Dateien schreiben“, export: nur --format nativ
   --commit                 localize.json und exportierte Dateien committen
   --push                   wie --commit, danach pull --rebase und push
   --message <text>         Commit-Nachricht (Standard: „Texte aktualisiert (localize-me)“)
+  --localizable-branch <name>  Arbeitsbranch für die Texte (schließt --commit ein)
+  --tracking-branch <name>     Arbeitsbranch fürs Tracking (schließt --commit ein)
   --after-export <befehl>  Befehl ausführen, z. B. "sh push.sh" (Umgebung: LOCALIZE_ME_FILE,
                            LOCALIZE_ME_FILES, LOCALIZE_ME_CHANGED, LOCALIZE_ME_COMMITS)
 `;
@@ -76,12 +81,15 @@ try {
       "no-open": { type: "boolean" },
       platform: { type: "string" },
       format: { type: "string" },
+      kind: { type: "string" },
       langs: { type: "string" },
       delimiter: { type: "string" },
       out: { type: "string" },
       commit: { type: "boolean" },
       push: { type: "boolean" },
       message: { type: "string" },
+      "localizable-branch": { type: "string" },
+      "tracking-branch": { type: "string" },
       "after-export": { type: "string" },
       help: { type: "boolean", short: "h" },
       version: { type: "boolean", short: "v" },
@@ -94,10 +102,27 @@ try {
 const { values: opts, positionals } = parsed;
 const command = positionals[0] || "dev";
 const file = path.resolve(opts.file || "localize.json");
-const versioning = { commit: !!opts.commit, push: !!opts.push, message: opts.message, hook: opts["after-export"] };
+const branches = {
+  ...(opts["localizable-branch"] && { localizable: opts["localizable-branch"] }),
+  ...(opts["tracking-branch"] && { tracking: opts["tracking-branch"] }),
+};
+const hasBranches = Object.keys(branches).length > 0;
+const versioning = {
+  commit: !!opts.commit || hasBranches,
+  push: !!opts.push,
+  message: opts.message,
+  hook: opts["after-export"],
+  ...(hasBranches && { branches }),
+};
 
 if (opts.help) { console.log(HELP); process.exit(0); }
 if (opts.version) { console.log(pkg.version); process.exit(0); }
+
+try {
+  Object.values(branches).forEach(checkBranchName);
+} catch (e) {
+  fail(e.message);
+}
 
 switch (command) {
   case "dev":
@@ -147,6 +172,7 @@ async function dev() {
   if (!["127.0.0.1", "localhost", "::1"].includes(host)) console.log(`  Erreichbar im Netzwerk über ${host} – ohne Login, nur intern betreiben.`);
   const steps = [versioning.push ? "Commit + Push" : versioning.commit && "Commit", versioning.hook && `„${versioning.hook}“`].filter(Boolean);
   if (steps.length) console.log(`  Nach dem Export: ${steps.join(", danach ")}`);
+  for (const [kind, branch] of Object.entries(branches)) console.log(`  Arbeitsbranch ${kind}: ${branch}`);
   console.log("");
   if (!opts["no-open"] && !process.env.CI) openBrowser(url);
 
@@ -159,47 +185,63 @@ async function exportCommand() {
   if (!fs.existsSync(file)) fail(`${path.relative(process.cwd(), file)} gibt es nicht. Starte zuerst die Oberfläche oder nutze --file.`);
   let store;
   try { store = new Store(file); } catch (e) { fail(e.message); }
-  const outputs = configuredOutputs(store.project, file);
-  const format = opts.format || (outputs.length ? "native" : "csv");
-  if (format === "native") await exportNative(store.project, outputs);
+  const configured = exportTargets(store.project, file);
+  const format = opts.format || (configured.length || opts.kind ? "native" : "csv");
+  if (format === "native") await exportNative(store.project, configured);
   else if (format === "csv") {
+    if (opts.kind) fail("--kind gilt nur für --format native.");
     if (versioning.commit || versioning.push || versioning.hook) console.warn("localize-me: --commit, --push und --after-export gelten nur für --format native.");
     exportCsv(store.project);
   }
   else fail(`Unbekanntes Format „${format}“. Erlaubt: native, csv`);
 }
 
-async function exportNative(project, outputs) {
+/** Was geschrieben werden soll: alles aus "output", eingegrenzt über --kind und --platform, oder genau ein Ordner mit --out. */
+function chooseTargets(configured) {
+  if (opts.out) {
+    // --out meint einen Ordner, deshalb ohne --kind wie bisher nur die Texte.
+    const kind = opts.kind || "localizable";
+    const platforms = opts.platform ? [opts.platform] : configured.filter((t) => t.kind === kind).map((t) => t.platform);
+    if (!platforms.length) fail('Kein Ziel: --platform ios|android und --out <ordner> angeben oder "output" in localize.json eintragen.');
+    if (platforms.length > 1) fail("--out braucht --platform, weil jede Plattform einen eigenen Ordner hat.");
+    return [{ kind, platform: platforms[0], dir: path.resolve(opts.out) }];
+  }
+  const kinds = configured.filter((t) => !opts.kind || t.kind === opts.kind);
+  const targets = kinds.filter((t) => !opts.platform || t.platform === opts.platform);
+  if (targets.length) return targets;
+  const where = opts.kind === "tracking" ? "output.tracking" : "output";
+  if (opts.platform) fail(`Kein Zielordner für ${opts.platform}: --out angeben oder ${where}.${opts.platform} in localize.json eintragen.`);
+  fail(`Kein Ziel: --platform ios|android und --out <ordner> angeben oder "${where}" in localize.json eintragen.`);
+}
+
+async function exportNative(project, configured) {
+  if (opts.kind && !FILE_KINDS.includes(opts.kind)) fail(`Unbekannte Dateiart „${opts.kind}“. Erlaubt: ${FILE_KINDS.join(", ")}`);
   if (opts.platform && !NATIVE_PLATFORMS.includes(opts.platform)) fail(`Unbekannte Plattform „${opts.platform}“. Erlaubt: ${NATIVE_PLATFORMS.join(", ")}`);
-  const platforms = opts.platform ? [opts.platform] : outputs.map((o) => o.platform);
-  if (!platforms.length) fail('Kein Ziel: --platform ios|android und --out <ordner> angeben oder "output" in localize.json eintragen.');
-  if (opts.out && platforms.length > 1) fail("--out braucht --platform, weil jede Plattform einen eigenen Ordner hat.");
+  const targets = chooseTargets(configured);
 
-  const empty = Object.keys(project.keys).filter((k) => {
-    const value = project.keys[k][project.base];
-    return !((isPluralValue(value) ? value.other : value) || "").trim();
-  });
-  if (empty.length) console.warn(`localize-me: ${empty.length} Keys ohne Text in der Basissprache ${project.base}: ${empty.slice(0, 5).join(", ")}${empty.length > 5 ? " …" : ""}`);
+  if (targets.some((t) => t.kind === "localizable")) {
+    const empty = Object.keys(project.keys).filter((k) => {
+      const value = project.keys[k][project.base];
+      return !((isPluralValue(value) ? value.other : value) || "").trim();
+    });
+    if (empty.length) console.warn(`localize-me: ${empty.length} Keys ohne Text in der Basissprache ${project.base}: ${empty.slice(0, 5).join(", ")}${empty.length > 5 ? " …" : ""}`);
+  }
 
-  const all = [];
-  for (const platform of platforms) {
-    const dir = opts.out ? path.resolve(opts.out) : outputs.find((o) => o.platform === platform)?.dir;
-    if (!dir) fail(`Kein Zielordner für ${platform}: --out angeben oder output.${platform} in localize.json eintragen.`);
-    let written;
-    try { written = writeNative(project, platform, dir); } catch (e) { fail(e.message); }
-    for (const { file: out, changed } of written) {
-      console.log(`localize-me: ${platform} → ${path.relative(process.cwd(), out)}${changed ? "" : " (unverändert)"}`);
-    }
-    all.push(...written);
+  let all;
+  try { all = writeTargets(project, targets); } catch (e) { fail(e.message); }
+  for (const { kind, platform, file: out, changed } of all) {
+    console.log(`localize-me: ${kind === "localizable" ? platform : `${kind} ${platform}`} → ${path.relative(process.cwd(), out)}${changed ? "" : " (unverändert)"}`);
   }
 
   if (!versioning.commit && !versioning.push && !versioning.hook) return;
-  const result = await afterExport(versioning, { file, written: all });
+  // Mit --kind oder --out umfasst der Export nur einen Teil, nur der soll auf seinen Branch.
+  const kinds = opts.kind || opts.out ? [...new Set(targets.map((t) => t.kind))] : undefined;
+  const result = await afterExport(versioning, { file, written: all, kinds });
   for (const r of result.git || []) {
     const where = r.repo ? path.relative(process.cwd(), r.repo) || "." : "";
     if (r.error) console.error(`localize-me: git${where ? ` (${where})` : ""} fehlgeschlagen:\n${r.error}`);
-    else if (r.commit) console.log(`localize-me: git (${where}) → Commit ${r.commit}${r.pushed ? " erstellt und gepusht" : " erstellt"}`);
-    else console.log(`localize-me: git (${where}) → nichts Neues zu committen${r.pushed ? ", Repo ist auf dem Stand des Remotes" : ""}`);
+    else if (r.commit) console.log(`localize-me: git (${where}) → Commit ${r.commit}${r.branch ? ` auf ${r.branch}` : ""}${r.pushed ? " erstellt und gepusht" : " erstellt"}`);
+    else console.log(`localize-me: git (${where}) → nichts Neues zu committen${r.branch ? ` auf ${r.branch}` : ""}${r.pushed ? ", Repo ist auf dem Stand des Remotes" : ""}`);
   }
   if (result.hook) {
     if (result.hook.output) console.log(result.hook.output);

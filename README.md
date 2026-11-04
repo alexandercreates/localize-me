@@ -1,12 +1,13 @@
 # localize-me
 
-Schlanke Übersetzungsverwaltung für iOS- und Android-Apps. Keys anlegen, Texte übersetzen, als `Localizable.strings`/`strings.xml` oder CSV exportieren – ohne Account, ohne Cloud, ohne Abhängigkeiten. Die Texte liegen als `localize.json` in deinem Projekt und lassen sich ganz normal mit Git versionieren.
+Schlanke Übersetzungsverwaltung für iOS- und Android-Apps. Keys anlegen, Texte übersetzen, als `Localizable.strings`/`strings.xml` oder CSV exportieren – ohne Account, ohne Cloud, ohne Abhängigkeiten. Dazu verwaltet localize-me die [Tracking-Werte](#tracking) für Screens, Events und Parameter. Alles liegt als `localize.json` in deinem Projekt und lässt sich ganz normal mit Git versionieren.
 
 Läuft lokal auf deinem Rechner oder zentral fürs ganze Team auf einem Server. Auf Wunsch wird jeder Export automatisch ein Git-Commit.
 
 - [Schnellstart](#schnellstart)
 - [Platzhalter](#platzhalter) und [Plurals](#plurals)
 - [Texte nur für iOS oder Android](#texte-nur-für-ios-oder-android)
+- [Tracking](#tracking): Screens, Events und Parameter als `.strings`- und XML-Datei
 - [Export](#export) ins App-Projekt oder als CSV
 - [Optionen für die Oberfläche](#optionen-für-die-oberfläche)
 - [Beim Export versionieren](#beim-export-versionieren) (Commit, Push, eigener Befehl)
@@ -126,6 +127,77 @@ In der `localize.json` steht das unter `only`:
 }
 ```
 
+## Tracking
+
+Unter **Dateien → Tracking** legst du Screens, Events und Parameter an, jeweils mit **Key** und **Value**. localize-me schreibt daraus einfache String-Dateien. Einen Tracking-Layer erzeugt es nicht: Wie die Werte zu deinem Analytics-Dienst kommen, entscheidet dein App-Code.
+
+| Typ | Eingabe | iOS | Android |
+| --- | ------- | --- | ------- |
+| Screen | `startseite` = `app/startseite` | `"screen.startseite" = "app/startseite";` | `R.string.screen_startseite` |
+| Event | `kauf` = `Order Completed` | `"event.kauf" = "Order Completed";` | `R.string.event_kauf` |
+| Parameter | `item_id` = `item_id` | `"parameter.item_id" = "item_id";` | `R.string.parameter_item_id` |
+
+- **Key:** Beginnt mit einem Buchstaben und enthält nur Buchstaben, Ziffern, Punkt, Unterstrich und Bindestrich. Das Präfix ergänzt localize-me je nach Typ, auf iOS mit `.`, auf Android mit `_`. Tippst du es mit, entsteht es nicht doppelt.
+- **Value:** Pflichtfeld. Jeder beliebige Text ist erlaubt, er kommt genau so beim Analytics-Dienst an. Fehlt ein Value in der `localize.json`, zeigt die Oberfläche den Eintrag an, und der Export bricht mit einer Meldung ab, bis er nachgetragen ist.
+
+**iOS:** `Tracking.strings`
+
+```
+"screen.startseite" = "app/startseite";
+
+"event.kauf" = "Order Completed";
+
+/* Artikelnummer */
+"parameter.item_id" = "item_id";
+```
+
+**Android:** `values/tracking.xml`
+
+```xml
+<resources>
+    <string name="screen_startseite" translatable="false">app/startseite</string>
+
+    <string name="event_kauf" translatable="false">Order Completed</string>
+
+    <!-- Artikelnummer -->
+    <string name="parameter_item_id" translatable="false">item_id</string>
+</resources>
+```
+
+So liest du einen Wert aus:
+
+```swift
+let screen = NSLocalizedString("screen.startseite", tableName: "Tracking", comment: "")
+```
+
+```kotlin
+val screen = getString(R.string.screen_startseite)
+```
+
+Tracking-Werte werden nicht übersetzt, deshalb gibt es sie nur einmal und nicht je Sprache.
+
+Auf Android landen sie wie die Texte in `R.string`. Ergeben zwei Keys im selben Bereich denselben Android-Namen (`item_id` und `item.id`), wird der zweite abgewiesen. Kollidiert ein Eintrag mit einem Text-Key aus `strings.xml`, bricht der Android-Export mit einer Meldung ab.
+
+Die Zielordner stehen in der `localize.json` unter `output.tracking`. Das können dieselben Ordner wie für die Texte sein:
+
+```json
+{
+  "output": {
+    "tracking": {
+      "ios": "../ios/MeineApp/Resources",
+      "android": "../android/app/src/main/res"
+    }
+  },
+  "tracking": {
+    "screens": { "startseite": { "value": "app/startseite" } },
+    "events": { "kauf": { "value": "Order Completed" } },
+    "parameters": { "item_id": { "value": "item_id", "description": "Artikelnummer" } }
+  }
+}
+```
+
+`Tracking.strings` muss in Xcode zum App-Target gehören. Die Dateien kommen wie alle anderen über [den Export](#export) ins Projekt.
+
 ## Export
 
 ### Direkt ins App-Projekt
@@ -152,6 +224,13 @@ npx localize-me export
 | iOS       | `<ziel>/<sprache>.lproj/Localizable.strings`                 |
 | Android   | `<ziel>/values/strings.xml` (Basissprache), `values-<sprache>/strings.xml` |
 
+Ist `output.tracking` eingetragen, entstehen im selben Schritt auch `Tracking.strings` und `values/tracking.xml`. Lässt sich eine Datei nicht erzeugen, wird keine geschrieben. Einzelne Dateiarten exportierst du mit `--kind`:
+
+```bash
+npx localize-me export --kind tracking
+npx localize-me export --kind tracking --platform android --out app/src/main/res
+```
+
 - Platzhalter werden wie unten umgewandelt, Sonderzeichen passend escaped.
 - Android-Namen entstehen aus dem Key: `login.title` → `R.string.login_title`. Ergeben zwei Keys denselben Namen, bricht der Export mit einer Meldung ab.
 - Fehlt eine Übersetzung, fehlt sie auch in der Datei – die App zeigt dann den Text der Basissprache.
@@ -175,6 +254,7 @@ Ohne `output` in der `localize.json` ist CSV der Standard, `--format csv` kann d
 | Option        | Werte                       | Standard                              |
 | ------------- | --------------------------- | ------------------------------------- |
 | `--format`    | `native`, `csv`             | `native` mit `output`, sonst `csv`    |
+| `--kind`      | `localizable`, `tracking` (nur native) | alle aus `output`, mit `--out`: `localizable` |
 | `--platform`  | `ios`, `android`, `raw`     | native: alle aus `output`, csv: `raw` |
 | `--langs`     | Sprachcodes, kommagetrennt  | alle, Basissprache zuerst             |
 | `--delimiter` | `;` oder `,`                | `;` (öffnet sauber in deutschem Excel) |
@@ -203,8 +283,10 @@ localize-me dev [optionen]      # bzw. npm run dev -- [optionen]
 | `--push`                 | Wie `--commit`, danach `git pull --rebase` und `git push`               | –                         |
 | `--message <text>`       | Commit-Nachricht, wenn in der Oberfläche keine eingegeben wird          | `Texte aktualisiert (localize-me)` |
 | `--after-export <befehl>`| Befehl, der nach jedem Export läuft                                     | –                         |
+| `--localizable-branch <name>` | Arbeitsbranch für die Texte, siehe [Arbeitsbranches](#arbeitsbranches-für-texte-und-tracking) | aktueller Branch |
+| `--tracking-branch <name>` | Arbeitsbranch fürs Tracking                                           | aktueller Branch |
 
-`--commit`, `--push`, `--message` und `--after-export` funktionieren genauso mit `localize-me export --format native`.
+`--commit`, `--push`, `--message`, `--after-export` und die Arbeitsbranches funktionieren genauso mit `localize-me export --format native`.
 
 ## Beim Export versionieren
 
@@ -234,6 +316,28 @@ In der Oberfläche heißt der Button unter **Exportieren** dann **Schreiben und 
 Das Ergebnis steht direkt im Export-Fenster, z. B. „Commit 3f2a91c erstellt und gepusht.“, bei Fehlern mit der Meldung von Git. Auf der Kommandozeile endet `localize-me export` bei einem Fehler mit Exit-Code 1, damit Pipelines ihn bemerken.
 
 **Mehrere Repos:** Liegen iOS- und Android-Projekt in verschiedenen Repos, bekommt jedes seinen eigenen Commit (und Push).
+
+### Arbeitsbranches für Texte und Tracking
+
+Texte und Tracking können auf getrennten Branches landen, zum Beispiel für getrennte Pull Requests:
+
+```bash
+localize-me dev --push --localizable-branch texte --tracking-branch tracking
+localize-me export --tracking-branch tracking --kind tracking
+```
+
+Beide Optionen schließen `--commit` ein und gehen auch einzeln. Das Export-Fenster zeigt die eingestellten Branches.
+
+- **Der ausgecheckte Branch bleibt, wie er ist.** localize-me wechselt nicht den Branch und fasst Index und Arbeitsordner nicht an. Die neuen Stände liegen dort also weiter als uncommittete Änderungen, wenn gerade ein anderer Branch ausgecheckt ist.
+- **Jeder Branch bekommt nur seinen Teil.** Der Tracking-Branch bekommt `Tracking.strings`, `values/tracking.xml` und aus der `localize.json` nur den Block `tracking`. Der Text-Branch bekommt die Textdateien und den Rest der `localize.json`. Das gilt ab dem Moment, in dem die `localize.json` auf dem Branch existiert: Fehlt sie dort noch, kommt sie beim ersten Commit vollständig mit.
+- **Neue Branches** beginnen beim aktuell ausgecheckten Stand und entstehen beim ersten Export. Beim Commit auf den Branch laufen keine Git-Hooks und es wird nicht signiert.
+- **Ohne eigenen Branch** geht eine Dateiart wie gewohnt auf den aktuellen Branch, dann mit der ganzen `localize.json`. Dasselbe gilt, wenn der Arbeitsbranch gerade ausgecheckt ist. Für eine saubere Trennung trägst du also beide Branches ein und checkst keinen davon aus.
+- **Push** nutzt das Remote des Branches, sonst `remote.pushDefault`, sonst `origin`, und holt vorher dessen Stand.
+
+| Situation | Was localize-me tut | Was du tust |
+| --------- | ------------------- | ----------- |
+| Lokaler und entfernter Branch sind auseinandergelaufen | Der Commit bleibt lokal, es wird nicht gepusht | Auf dem Branch `git pull --rebase` und `git push` ausführen |
+| Branch ist in einem anderen `git worktree` ausgecheckt | Kein Commit, die Meldung nennt den Branch | Dort einen anderen Branch auschecken oder die Option anpassen |
 
 ### Wenn etwas schiefgeht
 
@@ -270,7 +374,7 @@ curl -sf -u ":$AZURE_DEVOPS_TOKEN" -H "Content-Type: application/json" -d '{}' \
 - Schlägt schon Git fehl, wird der Befehl übersprungen.
 - Oft geht es auch ohne eigenen Befehl: Eine Pipeline mit Trigger auf den Branch startet nach jedem Push von selbst.
 
-> **Warum nur über die Kommandozeile?** `--commit`, `--push` und `--after-export` lassen sich bewusst nicht in der `localize.json` einstellen. Sonst könnte jeder, der die Textdatei ändern darf, Befehle auf dem Rechner bzw. Server ausführen.
+> **Warum nur über die Kommandozeile?** `--commit`, `--push`, `--after-export` und die Arbeitsbranches lassen sich bewusst nicht in der `localize.json` einstellen. Sonst könnte jeder, der die Textdatei ändern darf, Befehle auf dem Rechner bzw. Server ausführen oder auf beliebige Branches pushen.
 
 ## Im Team auf einem Server (Docker)
 

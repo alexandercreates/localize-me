@@ -2,22 +2,29 @@ import fs from "node:fs";
 import path from "node:path";
 import { CATEGORIES, isPluralKey, isPluralValue } from "./plurals.js";
 import { ONLY_PLATFORMS } from "./platforms.js";
+import { isTrackingValue, normalizeTracking, TRACKING_KEY_PATTERN, TRACKING_KEY_RULE, TRACKING_SECTIONS, trackingResourceName, withoutTrackingPrefix } from "./tracking.js";
 
 // localize.json – eine Datei, git-freundlich: Keys alphabetisch, eine Zeile pro Sprache.
 //
 // {
 //   "base": "de",
 //   "languages": [{ "code": "de", "name": "Deutsch" }],
-//   "output": { "ios": "../ios/App/Resources", "android": "../android/app/src/main/res" },
+//   "output": {
+//     "ios": "../ios/App/Resources",
+//     "android": "../android/app/src/main/res",
+//     "tracking": { "ios": "../ios/App/Resources", "android": "../android/app/src/main/res" }
+//   },
 //   "only": { "settings.face_id": "ios" },
 //   "keys": {
 //     "onboarding.title": { "de": "Willkommen!" },
 //     "tasks.open": { "de": { "one": "Eine Aufgabe", "other": "#count:int Aufgaben" } }
-//   }
+//   },
+//   "tracking": { "screens": {}, "events": {}, "parameters": {} }
 // }
 //
 // `output` ist optional: Zielordner für `localize-me export`, relativ zu localize.json.
 // `only` ist optional: Keys, die nur eine Plattform braucht (siehe platforms.js).
+// `tracking` ist optional: Screens, Events und Parameter (siehe tracking.js).
 // Plurals (siehe plurals.js): Hat eine Sprache Formen, wird der ganze Key zum Plural.
 
 export const KEY_PATTERN = /^[A-Za-z0-9_.\-]+$/;
@@ -64,6 +71,13 @@ export function normalize(data) {
     const dir = data?.output?.[platform];
     if (typeof dir === "string" && dir.trim()) output[platform] = dir.trim();
   }
+  const trackingOutput = {};
+  for (const field of ["ios", "android"]) {
+    const value = data?.output?.tracking?.[field];
+    if (typeof value === "string" && value.trim()) trackingOutput[field] = value.trim();
+  }
+  if (Object.keys(trackingOutput).length) output.tracking = trackingOutput;
+  const tracking = normalizeTracking(data?.tracking);
   const only = {};
   for (const name of Object.keys(data?.only || {}).sort((a, b) => a.localeCompare(b))) {
     if (Object.hasOwn(keys, name) && ONLY_PLATFORMS.includes(data.only[name])) only[name] = data.only[name];
@@ -74,6 +88,7 @@ export function normalize(data) {
     ...(Object.keys(output).length && { output }),
     ...(Object.keys(only).length && { only }),
     keys,
+    ...(tracking && { tracking }),
   };
 }
 
@@ -238,6 +253,72 @@ export class Store {
     if (!this.project.languages.some((l) => l.code === code)) throw new ValidationError(`Die Sprache ${code} gibt es nicht.`);
     this.project.base = code;
     this.save();
+  }
+
+  // ---------- Tracking ----------
+
+  addTrackingItem(section, key, fields = {}) {
+    const tracking = this.#tracking(section);
+    key = withoutTrackingPrefix(section, String(key || "").trim());
+    this.#checkTrackingKey(section, key);
+    this.#checkTrackingValue(fields.value);
+    tracking[section][key] = this.#cleanTrackingFields(fields, {});
+    this.save();
+  }
+
+  /** Ändert `value` oder `description`; mit `key` wird umbenannt. */
+  updateTrackingItem(section, key, fields = {}) {
+    const tracking = this.#tracking(section);
+    if (!Object.hasOwn(tracking[section], key)) throw new ValidationError(`„${key}“ gibt es nicht.`);
+    const item = this.#cleanTrackingFields(fields, tracking[section][key]);
+    const next = typeof fields.key === "string" ? withoutTrackingPrefix(section, fields.key.trim()) : key;
+    if (next !== key) {
+      this.#checkTrackingKey(section, next, key);
+      delete tracking[section][key];
+    }
+    tracking[section][next] = item;
+    this.save();
+  }
+
+  deleteTrackingItem(section, key) {
+    const tracking = this.#tracking(section);
+    if (!Object.hasOwn(tracking[section], key)) throw new ValidationError(`„${key}“ gibt es nicht.`);
+    delete tracking[section][key];
+    this.save();
+  }
+
+  #tracking(section) {
+    if (!TRACKING_SECTIONS.includes(section)) throw new ValidationError(`Unbekannter Bereich: ${section}. Erlaubt: ${TRACKING_SECTIONS.join(", ")}`);
+    this.project.tracking ??= { screens: {}, events: {}, parameters: {} };
+    return this.project.tracking;
+  }
+
+  #checkTrackingKey(section, key, previous) {
+    if (!key) throw new ValidationError("Gib einen Key ein, zum Beispiel startseite.");
+    if (!TRACKING_KEY_PATTERN.test(key)) throw new ValidationError(TRACKING_KEY_RULE);
+    const items = this.project.tracking[section];
+    if (Object.hasOwn(items, key)) throw new ValidationError(`„${key}“ gibt es schon.`);
+    // Beide Keys wären auf Android dieselbe Ressource, das würde erst beim Export auffallen.
+    const id = trackingResourceName(section, key);
+    const twin = Object.keys(items).find((other) => other !== previous && trackingResourceName(section, other) === id);
+    if (twin) throw new ValidationError(`„${key}“ und „${twin}“ ergeben beide den Android-Namen ${id}.`);
+  }
+
+  #checkTrackingValue(value) {
+    if (!isTrackingValue(value)) throw new ValidationError("Gib einen Value ein, zum Beispiel app/startseite.");
+  }
+
+  #cleanTrackingFields(fields, current) {
+    const item = { ...current };
+    if (Object.hasOwn(fields, "value")) {
+      this.#checkTrackingValue(fields.value);
+      item.value = fields.value;
+    }
+    if (Object.hasOwn(fields, "description")) {
+      if (typeof fields.description !== "string") throw new ValidationError("Die Beschreibung muss eine Zeichenkette sein.");
+      item.description = fields.description.trim();
+    }
+    return item;
   }
 
   #checkKeyName(name) {

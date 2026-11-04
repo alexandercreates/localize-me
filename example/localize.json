@@ -25,5 +25,25 @@
       "de": "Willkommen!",
       "en": "Welcome!"
     }
+  },
+  "tracking": {
+    "screens": {
+      "startseite": {
+        "value": "app/startseite",
+        "description": "Startseite nach dem Login"
+      }
+    },
+    "events": {
+      "eintrag_geoeffnet": {
+        "value": "List Item Opened",
+        "description": "Eintrag in der Liste angetippt"
+      }
+    },
+    "parameters": {
+      "item_id": {
+        "value": "item_id",
+        "description": "ID des Eintrags"
+      }
+    }
   }
 }
