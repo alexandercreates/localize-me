@@ -8,6 +8,7 @@
   import QuickAdd from "./lib/QuickAdd.svelte";
   import Filters from "./lib/Filters.svelte";
   import KeyTable from "./lib/KeyTable.svelte";
+  import Tracking from "./lib/Tracking.svelte";
   import ExportDrawer from "./lib/ExportDrawer.svelte";
   import SetupNotice from "./lib/SetupNotice.svelte";
   import Icon from "./lib/ui/Icon.svelte";
@@ -55,7 +56,19 @@
 
   <main bind:this={main}>
     <SetupNotice />
-    {#if app.project}
+    {#if app.project && app.view === "tracking"}
+      <Tracking bind:searchInput />
+      <p class={["status", app.connection]}>
+        <span class="dot"></span>
+        <span>
+          {#if app.connection === "lost"}
+            Keine Verbindung zum Server. Läuft localize-me noch im Terminal?
+          {:else}
+            Gespeichert in <span class="mono">{shortFile}</span> · Änderungen von außen (z. B. git pull) erscheinen sofort
+          {/if}
+        </span>
+      </p>
+    {:else if app.project}
       <TopBar bind:searchInput onaddlanguage={addLanguage} />
       {#if app.keyNames.length}
         <ProgressHero onfocusmissing={focusFirst} onaddlanguage={addLanguage} />
@@ -121,7 +134,8 @@
   @keyframes rise { from { opacity: 0; transform: translate(-50%, 8px); } }
 
   @media (max-width: 960px) {
-    .shell { grid-template-columns: 1fr; }
+    /* minmax(0, …): Breite Inhalte wie die Code-Vorschau scrollen in sich, statt die Seite aufzudrücken. */
+    .shell { grid-template-columns: minmax(0, 1fr); }
     main { padding: 24px 16px 40px; }
   }
 </style>

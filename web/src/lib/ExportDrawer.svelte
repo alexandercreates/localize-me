@@ -1,6 +1,6 @@
 <script>
   import { buildCsv, csvFilename } from "@shared/csv.js";
-  import { isFilled, isPluralKey } from "@shared/plurals.js";
+  import { isFilled } from "@shared/plurals.js";
   import { exportsTo } from "@shared/platforms.js";
   import { app, prefs } from "./model.svelte.js";
   import { printfSegments } from "./tokens.js";
@@ -37,12 +37,16 @@
   const missing = $derived(langs.slice(1).reduce((n, code) => n + keys.filter((k) => !isFilled(app.project.keys[k][code])).length, 0));
   const href = $derived(publicUrl("/api/export?" + new URLSearchParams({ platform, delimiter, langs: langs.join(",") })));
   // Zielordner aus "output" in localize.json – dann schreibt der Server die Dateien direkt ins App-Projekt.
-  const outputs = $derived(Object.entries(app.project?.output ?? {}));
-  const hasPlurals = $derived(app.keyNames.some((k) => isPluralKey(app.project.keys[k])));
+  const outputs = $derived(app.targets);
+  // CSV gibt es nur für Texte. In der Tracking-Ansicht zeigt das Fenster, was fürs Tracking noch fehlt.
+  const forTracking = $derived(app.view === "tracking");
+  const trackingMissing = $derived(forTracking && !outputs.some((t) => t.kind === "tracking"));
   let writing = $state(false);
   // Commit/Push/Befehl nach dem Export – nur per CLI einstellbar (--commit, --push, --after-export).
   const versioning = $derived(app.project?.versioning ?? {});
   const followUp = $derived(sentence(["Schreibt die Dateien", versioning.commit && "committet", versioning.push && "pusht", versioning.hook && "führt danach den eingestellten Befehl aus"]));
+  const BRANCH_LABELS = { localizable: "Localizable", tracking: "Tracking" };
+  const branches = $derived(Object.entries(versioning.branches ?? {}));
   let message = $state("");
   let report = $state(null);
 
@@ -74,12 +78,13 @@
   function buildReport(summary, after) {
     const lines = [summary];
     const errors = [];
-    const several = (after.git?.length ?? 0) > 1;
+    const several = new Set((after.git ?? []).map((r) => r.repo)).size > 1;
     for (const r of after.git ?? []) {
       const where = several && r.repo ? ` (${r.repo.split("/").pop()})` : "";
-      if (r.error) errors.push(`Git${where}: ${r.error}`);
-      else if (r.commit) lines.push(`Commit ${r.commit}${r.pushed ? " erstellt und gepusht" : " erstellt"}${where}.`);
-      else lines.push(`Nichts Neues zu committen${r.pushed ? ", Repo ist auf dem Stand des Remotes" : ""}${where}.`);
+      const on = r.branch ? ` auf ${r.branch}` : "";
+      if (r.error) errors.push(`Git${on}${where}: ${r.error}`);
+      else if (r.commit) lines.push(`Commit ${r.commit}${on}${r.pushed ? " erstellt und gepusht" : " erstellt"}${where}.`);
+      else lines.push(`Nichts Neues zu committen${on}${r.pushed ? ", Repo ist auf dem Stand des Remotes" : ""}${where}.`);
     }
     if (after.hook?.ok) lines.push("Befehl nach dem Export ausgeführt.");
     else if (after.hook) errors.push(after.hook.error + (after.hook.output ? `\n${after.hook.output}` : ""));
@@ -111,24 +116,49 @@
     <header>
       <div>
         <h2 id="export-title">Exportieren</h2>
-        <p>{keys.length} Keys · {langs.map((c) => app.langName(c)).join(" → ")}</p>
+        {#if forTracking}
+          <p>{app.trackingCount} Einträge im Tracking</p>
+        {:else}
+          <p>{keys.length} Keys · {langs.map((c) => app.langName(c)).join(" → ")}</p>
+        {/if}
       </div>
       <button type="button" class="close" aria-label="Schließen" onclick={() => dialog.close()}><Icon name="x" size={18} /></button>
     </header>
 
     <div class="body">
+      {#if trackingMissing}
+        <section class="setup" aria-labelledby="tracking-setup-title">
+          <h3 id="tracking-setup-title" class="label">Zielordner fürs Tracking eintragen</h3>
+          <p class="note">Trag in <span class="mono">localize.json</span> ein, wohin <span class="mono">Tracking.strings</span> und <span class="mono">values/tracking.xml</span> sollen. Pfade sind relativ zur Datei:</p>
+          <pre class="snippet">{`"output": {
+  "tracking": {
+    "ios": "../ios/App/Resources",
+    "android": "../android/app/src/main/res"
+  }
+}`}</pre>
+        </section>
+      {/if}
+
       {#if outputs.length}
         <section class="native" aria-labelledby="native-title">
           <h3 id="native-title" class="label">In die App-Projekte schreiben</h3>
           <ul>
-            {#each outputs as [platform, dir]}
+            {#each outputs as target (target.kind + target.platform)}
               <li>
-                <Icon name={platform === "ios" ? "apple" : "android"} size={16} />
-                <span class="mono">{dir}</span>
-                <span class="kind">{platform === "ios" ? (hasPlurals ? "Localizable.strings + .stringsdict" : "Localizable.strings") : "strings.xml"}</span>
+                <Icon name={target.platform === "ios" ? "apple" : "android"} size={16} />
+                <span class="mono" title={target.dir}>{target.dir}</span>
+                <span class="kind">{target.file}</span>
               </li>
             {/each}
           </ul>
+          {#if branches.length}
+            <dl class="branches">
+              {#each branches as [kind, branch] (kind)}
+                <dt>{BRANCH_LABELS[kind] ?? kind}</dt>
+                <dd class="mono">{branch}</dd>
+              {/each}
+            </dl>
+          {/if}
           {#if versioning.commit}
             <label class="field">
               <span class="label">Commit-Nachricht</span>
@@ -153,9 +183,10 @@
             </div>
           {/if}
         </section>
-        <h3 class="label csv-title">Oder als CSV</h3>
+        {#if !forTracking}<h3 class="label csv-title">Oder als CSV</h3>{/if}
       {/if}
 
+      {#if !forTracking}
       <fieldset>
         <legend class="label">Plattform</legend>
         <div class="segmented">
@@ -205,14 +236,17 @@
       {#if missing}
         <p class="callout"><Icon name="alert" size={16} />{missing === 1 ? "1 Text fehlt" : `${missing} Texte fehlen`} noch und {missing === 1 ? "wird" : "werden"} leer exportiert.</p>
       {/if}
+      {/if}
     </div>
 
+    {#if !forTracking}
     <footer>
       <Button variant={outputs.length ? "secondary" : "primary"} {href} download={filename} icon="download" class="wide" onclick={() => app.notify("CSV wird heruntergeladen.")}>CSV herunterladen</Button>
       <button type="button" class="cli" onclick={copy} title="Befehl kopieren">
         <Icon name={copied ? "check" : "terminal"} size={14} /><span class="mono">{copied ? "Kopiert" : cli}</span>
       </button>
     </footer>
+    {/if}
   </div>
 </dialog>
 
@@ -286,6 +320,12 @@
   .native li .kind { color: var(--text-muted); font-size: 12px; }
   .native :global(.wide) { width: 100%; }
   .csv-title { margin: 0 0 -18px; }
+  .branches { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 4px 12px; margin: 0; font-size: 13px; line-height: 18px; }
+  .branches dt { color: var(--text-muted); }
+  .branches dd { margin: 0; overflow-wrap: anywhere; }
+  .setup { display: flex; flex-direction: column; gap: 10px; }
+  .setup h3 { margin: 0; }
+  .snippet { border-radius: var(--radius-lg); background: var(--sidebar-bg); color: var(--sidebar-text); white-space: pre; }
   .field { display: flex; flex-direction: column; gap: 6px; }
   .field input {
     width: 100%; height: 40px; padding: 0 12px;

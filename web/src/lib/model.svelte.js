@@ -1,6 +1,7 @@
 import { check } from "@shared/placeholders.js";
 import { checkPlural, isFilled, isPluralKey, isPluralValue, textOf } from "@shared/plurals.js";
 import { onlyOf } from "@shared/platforms.js";
+import { TRACKING_FILENAMES, trackingOf } from "@shared/tracking.js";
 import { publicUrl, unconfiguredPrefix } from "./urls.js";
 
 // Einstellungen pro Browser (Zielsprache, Export-Optionen). Fehlt localStorage, gelten die Standards.
@@ -20,6 +21,9 @@ export const namespaceOf = (key) => (key.includes(".") ? key.slice(0, key.indexO
 class Model {
   project = $state(null);
   connection = $state("connecting"); // connecting | ok | lost
+  view = $state(prefs.get("view", "localizable")); // localizable | tracking
+  trackingSection = $state(prefs.get("trackingSection", "events")); // screens | events | parameters
+  trackingSearch = $state("");
   chosenTarget = $state(prefs.get("target", ""));
   search = $state("");
   filter = $state("all"); // all | missing | review | done
@@ -74,6 +78,35 @@ class Model {
   counts = $derived(countStatus(this.scoped));
   totals = $derived(countStatus(this.rows));
   visible = $derived(this.filter === "all" ? this.scoped : this.scoped.filter((r) => r.status === this.filter));
+
+  tracking = $derived(this.project ? trackingOf(this.project) : { screens: {}, events: {}, parameters: {} });
+  trackingCount = $derived(Object.values(this.tracking).reduce((n, items) => n + Object.keys(items).length, 0));
+
+  // Zielordner aus "output" in localize.json, gleiche Reihenfolge wie beim Schreiben auf dem Server.
+  targets = $derived.by(() => {
+    const output = this.project?.output ?? {};
+    const hasPlurals = this.keyNames.some((k) => isPluralKey(this.project.keys[k]));
+    const list = [];
+    for (const platform of ["ios", "android"]) {
+      if (!output[platform]) continue;
+      const file = platform === "android" ? "strings.xml" : hasPlurals ? "Localizable.strings + .stringsdict" : "Localizable.strings";
+      list.push({ kind: "localizable", platform, dir: output[platform], file });
+    }
+    for (const platform of ["ios", "android"]) {
+      if (output.tracking?.[platform]) list.push({ kind: "tracking", platform, dir: output.tracking[platform], file: TRACKING_FILENAMES[platform] });
+    }
+    return list;
+  });
+
+  setView(view) {
+    this.view = view;
+    prefs.set("view", view);
+  }
+
+  setTrackingSection(section) {
+    this.trackingSection = section;
+    prefs.set("trackingSection", section);
+  }
 
   langName(code) {
     return this.languages.find((l) => l.code === code)?.name || code;
@@ -188,3 +221,4 @@ function countStatus(rows) {
 
 export const app = new Model();
 export const keyUrl = (key) => "/api/keys/" + encodeURIComponent(key);
+export const trackingUrl = (section, name) => `/api/tracking/${section}` + (name === undefined ? "" : "/" + encodeURIComponent(name));

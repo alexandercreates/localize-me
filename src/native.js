@@ -189,12 +189,16 @@ export function nativeFiles(project, platform) {
   throw new Error(`Unbekannte Plattform: ${platform}. Erlaubt: ${NATIVE_PLATFORMS.join(", ")}`);
 }
 
+export function writeNative(project, platform, dir) {
+  return writeFiles(nativeFiles(project, platform), dir);
+}
+
 /**
  * Schreibt die Dateien nach `dir`. Unveränderte Dateien bleiben unangetastet, damit Xcode und Gradle nicht unnötig neu bauen.
  * @returns {{file: string, changed: boolean}[]}
  */
-export function writeNative(project, platform, dir) {
-  return nativeFiles(project, platform).map(({ path: rel, content }) => {
+export function writeFiles(files, dir) {
+  return files.map(({ path: rel, content }) => {
     const file = path.join(dir, rel);
     let current = null;
     try { current = fs.readFileSync(file, "utf8"); } catch {}

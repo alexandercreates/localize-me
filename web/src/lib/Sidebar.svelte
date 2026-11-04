@@ -73,6 +73,17 @@
     </div>
   </div>
 
+  <nav class="section" aria-label="Dateien">
+    <div class="section-head"><span class="label">Dateien</span></div>
+    <button type="button" class={["ns", app.view === "localizable" && "active"]} aria-current={app.view === "localizable" ? "page" : undefined} onclick={() => app.setView("localizable")}>
+      <Icon name="languages" size={16} /><span class="ns-name">Localizable</span><span class="mono count">{app.keyNames.length}</span>
+    </button>
+    <button type="button" class={["ns", app.view === "tracking" && "active"]} aria-current={app.view === "tracking" ? "page" : undefined} onclick={() => app.setView("tracking")}>
+      <Icon name="activity" size={16} /><span class="ns-name">Tracking</span><span class="mono count">{app.trackingCount}</span>
+    </button>
+  </nav>
+
+  {#if app.view === "localizable"}
   <nav class="section" aria-label="Sprachen">
     <div class="section-head">
       <span class="label">Sprachen</span>
@@ -145,6 +156,7 @@
       <p class="hint">Entstehen automatisch aus Key-Präfixen wie <span class="mono">onboarding.</span></p>
     {/if}
   </nav>
+  {/if}
 
   <div class="cli">
     <div class="cli-head"><Icon name="terminal" size={14} /><span class="label">Auch im Build</span></div>

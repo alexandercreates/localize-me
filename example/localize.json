@@ -25,5 +25,23 @@
       "de": "Willkommen!",
       "en": "Welcome!"
     }
+  },
+  "tracking": {
+    "screens": {
+      "home": {
+        "description": "Startseite nach dem Login"
+      }
+    },
+    "events": {
+      "list_item_opened": {
+        "description": "Eintrag in der Liste angetippt"
+      }
+    },
+    "parameters": {
+      "item_id": {
+        "description": "ID des Eintrags"
+      },
+      "position": {}
+    }
   }
 }

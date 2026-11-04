@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { Store, ValidationError } from "./store.js";
 import { buildCsv, csvFilename } from "./csv.js";
 import { PLATFORMS } from "./placeholders.js";
-import { configuredOutputs, writeNative } from "./native.js";
+import { exportTargets, writeTargets } from "./outputs.js";
 import { afterExport, DEFAULT_MESSAGE } from "./versioning.js";
 import { internalOrigins, isRedirectStatus, publicOrigins, renderIndexHtml, resolvePublicConfig, resolveRedirect } from "./public-url.js";
 
@@ -40,7 +40,7 @@ const SECURITY_HEADERS = {
 
 /**
  * `uiDir: null` startet nur die API (Entwicklung mit Vite).
- * `versioning`: was nach „Dateien schreiben“ passiert – { commit, push, message, hook }, siehe versioning.js.
+ * `versioning`: was nach „Dateien schreiben“ passiert – { commit, push, message, hook, branches }, siehe versioning.js.
  * `host`: Adresse, auf der der Server lauscht. Bei 127.0.0.1/localhost werden nur Anfragen an localhost
  * angenommen – das schützt vor DNS-Rebinding (fremde Domain, die auf 127.0.0.1 zeigt).
  * `allowedHosts`: weitere Hostnamen, z. B. hinter einem Reverse Proxy auf demselben Rechner.
@@ -145,6 +145,7 @@ export function createServer({
         push: !!versioning.push,
         hook: !!versioning.hook,
         message: versioning.message || DEFAULT_MESSAGE,
+        ...(versioning.branches && { branches: versioning.branches }),
       },
     };
   }
@@ -268,21 +269,19 @@ export function createServer({
       // danach ggf. Commit/Push und eigener Befehl (Ergebnis unter `after`).
       if (method === "POST" && parts[1] === "export" && parts[2] === "native") {
         const body = req.headers["content-type"] ? await readJson(req) : {};
-        const outputs = configuredOutputs(store.project, store.file);
-        if (!outputs.length) throw new ValidationError('Trage in localize.json unter "output" die Zielordner für ios und android ein.');
+        const targets = exportTargets(store.project, store.file);
+        if (!targets.length) throw new ValidationError('Trage in localize.json unter "output" die Zielordner für ios und android ein.');
         if (exporting) return send(res, 409, { error: "Ein Export läuft gerade schon. Bitte kurz warten." });
         exporting = true;
         try {
           const root = path.dirname(store.file);
-          const written = [];
-          for (const { platform, dir } of outputs) {
-            try {
-              for (const f of writeNative(store.project, platform, dir)) written.push({ platform, ...f });
-            } catch (e) {
-              throw new ValidationError(e.message);
-            }
+          let written;
+          try {
+            written = writeTargets(store.project, targets);
+          } catch (e) {
+            throw new ValidationError(e.message);
           }
-          const files = written.map((f) => ({ platform: f.platform, file: path.relative(root, f.file), changed: f.changed }));
+          const files = written.map((f) => ({ kind: f.kind, platform: f.platform, file: path.relative(root, f.file), changed: f.changed }));
           if (!versioned) return send(res, 200, { files });
           const message = typeof body.message === "string" ? body.message : "";
           return send(res, 200, { files, after: await afterExport(versioning, { file: store.file, written, message }) });
@@ -313,6 +312,28 @@ export function createServer({
       // DELETE /api/keys/:key
       if (method === "DELETE" && parts[1] === "keys" && parts.length === 3) {
         store.deleteKey(parts[2]);
+        broadcast("change");
+        return send(res, 200, projectPayload());
+      }
+
+      // POST /api/tracking/:section {name, description?}
+      if (method === "POST" && parts[1] === "tracking" && parts.length === 3) {
+        const { name, ...fields } = await readJson(req);
+        store.addTrackingItem(parts[2], name, fields);
+        broadcast("change");
+        return send(res, 201, projectPayload());
+      }
+
+      // PATCH /api/tracking/:section/:name {name?, description?}
+      if (method === "PATCH" && parts[1] === "tracking" && parts.length === 4) {
+        store.updateTrackingItem(parts[2], parts[3], await readJson(req));
+        broadcast("change");
+        return send(res, 200, projectPayload());
+      }
+
+      // DELETE /api/tracking/:section/:name
+      if (method === "DELETE" && parts[1] === "tracking" && parts.length === 4) {
+        store.deleteTrackingItem(parts[2], parts[3]);
         broadcast("change");
         return send(res, 200, projectPayload());
       }
