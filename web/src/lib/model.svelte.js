@@ -2,6 +2,7 @@ import { check } from "@shared/placeholders.js";
 import { checkPlural, isFilled, isPluralKey, isPluralValue, textOf } from "@shared/plurals.js";
 import { onlyOf } from "@shared/platforms.js";
 import { TRACKING_FILENAMES, trackingOf } from "@shared/tracking.js";
+import { infoPlistOf } from "@shared/infoplist.js";
 import { publicUrl, unconfiguredPrefix } from "./urls.js";
 
 // Einstellungen pro Browser (Zielsprache, Export-Optionen). Fehlt localStorage, gelten die Standards.
@@ -21,9 +22,11 @@ export const namespaceOf = (key) => (key.includes(".") ? key.slice(0, key.indexO
 class Model {
   project = $state(null);
   connection = $state("connecting"); // connecting | ok | lost
-  view = $state(prefs.get("view", "localizable")); // localizable | tracking
+  view = $state(prefs.get("view", "localizable")); // localizable | infoplist | tracking
   trackingSection = $state(prefs.get("trackingSection", "events")); // screens | events | parameters
   trackingSearch = $state("");
+  infoPlistSearch = $state("");
+  infoPlistFilter = $state("all"); // all | filled | missing | empty
   chosenTarget = $state(prefs.get("target", ""));
   search = $state("");
   filter = $state("all"); // all | missing | review | done
@@ -82,6 +85,9 @@ class Model {
   tracking = $derived(this.project ? trackingOf(this.project) : { screens: {}, events: {}, parameters: {} });
   trackingCount = $derived(Object.values(this.tracking).reduce((n, items) => n + Object.keys(items).length, 0));
 
+  infoPlist = $derived(this.project ? infoPlistOf(this.project) : {});
+  infoPlistKeys = $derived(Object.keys(this.infoPlist).filter((k) => isFilled(this.infoPlist[k][this.base])));
+
   // Zielordner aus "output" in localize.json, gleiche Reihenfolge wie beim Schreiben auf dem Server.
   targets = $derived.by(() => {
     const output = this.project?.output ?? {};
@@ -89,7 +95,8 @@ class Model {
     const list = [];
     for (const platform of ["ios", "android"]) {
       if (!output[platform]) continue;
-      const file = platform === "android" ? "strings.xml" : hasPlurals ? "Localizable.strings + .stringsdict" : "Localizable.strings";
+      const ios = ["Localizable.strings", hasPlurals && ".stringsdict", Object.keys(this.infoPlist).length && "InfoPlist.strings"].filter(Boolean).join(" + ");
+      const file = platform === "android" ? "strings.xml" : ios;
       list.push({ kind: "localizable", platform, dir: output[platform], file });
     }
     for (const platform of ["ios", "android"]) {
@@ -112,9 +119,12 @@ class Model {
     return this.languages.find((l) => l.code === code)?.name || code;
   }
 
+  /** Übersetzungsstand einer Sprache – auf der InfoPlist-Seite für die Info.plist-Texte, sonst für die Keys. */
   progress(code) {
-    const total = this.keyNames.length;
-    const done = this.keyNames.filter((k) => isFilled(this.project.keys[k][code])).length;
+    const infoPlist = this.view === "infoplist";
+    const keys = infoPlist ? this.infoPlistKeys : this.keyNames;
+    const total = keys.length;
+    const done = keys.filter((k) => isFilled((infoPlist ? this.infoPlist : this.project.keys)[k][code])).length;
     return { done, total, ratio: total ? done / total : 0 };
   }
 
@@ -221,4 +231,5 @@ function countStatus(rows) {
 
 export const app = new Model();
 export const keyUrl = (key) => "/api/keys/" + encodeURIComponent(key);
+export const infoPlistUrl = (key) => "/api/infoplist/" + encodeURIComponent(key);
 export const trackingUrl = (section, name) => `/api/tracking/${section}` + (name === undefined ? "" : "/" + encodeURIComponent(name));

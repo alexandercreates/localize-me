@@ -20,6 +20,11 @@ export function resourceName(key) {
   return key.replace(/[.\-]/g, "_");
 }
 
+/** `pt_BR` → `pt-BR.lproj`. */
+export function lprojName(code) {
+  return code.replace(/_/g, "-") + ".lproj";
+}
+
 /** Text zwischen den Anführungszeichen einer .strings-Datei. */
 export function escapeStrings(text) {
   return text.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\n/g, "\\n").replace(/\r/g, "\\r").replace(/\t/g, "\\t");

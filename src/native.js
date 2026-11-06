@@ -1,14 +1,16 @@
 import fs from "node:fs";
 import path from "node:path";
 import { convert, parse, specOf } from "./placeholders.js";
-import { escapeStrings, escapeXml, exportsTo, resourceName } from "./platforms.js";
+import { escapeStrings, escapeXml, exportsTo, lprojName, resourceName } from "./platforms.js";
 import { categoriesFor, countOf, isPluralKey, isPluralValue } from "./plurals.js";
 import { LANG_PATTERN } from "./store.js";
+import { buildInfoPlistStrings, checkInfoPlist, hasInfoPlist, INFO_PLIST_FILENAME } from "./infoplist.js";
 
 // Native Ressourcen-Dateien direkt fürs App-Projekt:
 //
 //   iOS      <ziel>/<sprache>.lproj/Localizable.strings
 //            <ziel>/<sprache>.lproj/Localizable.stringsdict   (nur wenn es Plurals gibt)
+//            <ziel>/<sprache>.lproj/InfoPlist.strings         (nur wenn Info.plist-Texte gepflegt sind, siehe infoplist.js)
 //   Android  <ziel>/values[-<sprache>]/strings.xml   (Basissprache in values/, Plurals als <plurals>)
 //
 // Fehlende Übersetzungen fehlen auch in der Datei, damit die Plattform auf die Basissprache zurückfällt.
@@ -54,9 +56,7 @@ function pluralEntry(project, key, lang, platform) {
 
 // ---------- iOS ----------
 
-export function lprojName(code) {
-  return code.replace(/_/g, "-") + ".lproj";
-}
+export { lprojName };
 
 export function buildIosStrings(project, lang) {
   const lines = [`/* ${HEADER} */`, ""];
@@ -161,9 +161,15 @@ export function nativeFiles(project, platform) {
   if (invalid.length) throw new Error(`Ungültige Sprachcodes in localize.json: ${invalid.join(", ")} (erlaubt z. B. en, pt-BR, zh-Hans).`);
   if (platform === "ios") {
     const plurals = pluralKeys(project, "ios").length > 0;
+    const infoPlist = hasInfoPlist(project);
+    if (infoPlist) {
+      const problems = checkInfoPlist(project);
+      if (problems.length) throw new Error(problems.join("\n"));
+    }
     return languageOrder(project).flatMap((code) => [
       { path: path.join(lprojName(code), "Localizable.strings"), content: buildIosStrings(project, code) },
       ...(plurals ? [{ path: path.join(lprojName(code), "Localizable.stringsdict"), content: buildIosStringsdict(project, code) }] : []),
+      ...(infoPlist ? [{ path: path.join(lprojName(code), INFO_PLIST_FILENAME), content: buildInfoPlistStrings(project, code) }] : []),
     ]);
   }
   if (platform === "android") {

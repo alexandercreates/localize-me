@@ -7,6 +7,7 @@ Läuft lokal auf deinem Rechner oder zentral fürs ganze Team auf einem Server. 
 - [Schnellstart](#schnellstart)
 - [Platzhalter](#platzhalter) und [Plurals](#plurals)
 - [Texte nur für iOS oder Android](#texte-nur-für-ios-oder-android)
+- [InfoPlist](#infoplist): Berechtigungstexte wie `NSCameraUsageDescription` als `InfoPlist.strings`
 - [Tracking](#tracking): Screens, Events und Parameter als `.strings`- und XML-Datei
 - [Export](#export) ins App-Projekt oder als CSV
 - [Optionen für die Oberfläche](#optionen-für-die-oberfläche)
@@ -127,6 +128,29 @@ In der `localize.json` steht das unter `only`:
 }
 ```
 
+## InfoPlist
+
+Unter **Dateien → InfoPlist** übersetzt du die Texte aus der `Info.plist`, vor allem die Begründungen, die iOS bei Berechtigungsabfragen zeigt. Die Seite listet alle bekannten Keys mit Erklärung, gruppiert in **App-Name** (`CFBundleDisplayName`, `CFBundleName`, `CFBundleSpokenName`) und **Berechtigungen** (`NSCameraUsageDescription`, `NSLocationWhenInUseUsageDescription`, `NSUserTrackingUsageDescription`, `NSFaceIDUsageDescription` und viele mehr). Fehlt ein Key, etwa aus einem SDK, legst du ihn unten als **eigenen Key** an.
+
+Nur befüllte Keys landen in der Datei, je Sprache neben `Localizable.strings`:
+
+```
+<ziel>/de.lproj/InfoPlist.strings
+<ziel>/en.lproj/InfoPlist.strings
+```
+
+```
+/* Kamera */
+"NSCameraUsageDescription" = "Damit du Belege mit der Kamera scannen kannst.";
+```
+
+- **Der Key muss zusätzlich in der `Info.plist` stehen.** `InfoPlist.strings` übersetzt nur. Ohne Eintrag in der `Info.plist` stürzt die App beim Zugriff auf Kamera & Co. ab.
+- Fehlt eine Übersetzung, fehlt sie auch in der Datei. iOS zeigt dann den Wert aus der `Info.plist`.
+- Platzhalter wie `#name` werden hier nicht umgewandelt, der Text kommt Zeichen für Zeichen in die Datei.
+- Ziel ist derselbe Ordner wie für die Texte (`output.ios`), exportiert wird im selben Schritt. Solange kein Key befüllt ist, entsteht keine `InfoPlist.strings`.
+- Mit Arbeitsbranches gehören die Info.plist-Texte zu den Texten (`--localizable-branch`).
+- Für Android gibt es kein Gegenstück, die Texte fehlen dort.
+
 ## Tracking
 
 Unter **Dateien → Tracking** legst du Screens, Events und Parameter an, jeweils mit **Key** und **Value**. localize-me schreibt daraus einfache String-Dateien. Einen Tracking-Layer erzeugt es nicht: Wie die Werte zu deinem Analytics-Dienst kommen, entscheidet dein App-Code.
@@ -221,7 +245,7 @@ npx localize-me export
 
 | Plattform | Datei                                                        |
 | --------- | ------------------------------------------------------------ |
-| iOS       | `<ziel>/<sprache>.lproj/Localizable.strings`                 |
+| iOS       | `<ziel>/<sprache>.lproj/Localizable.strings`, dazu `InfoPlist.strings`, wenn [Info.plist-Texte](#infoplist) gepflegt sind |
 | Android   | `<ziel>/values/strings.xml` (Basissprache), `values-<sprache>/strings.xml` |
 
 Ist `output.tracking` eingetragen, entstehen im selben Schritt auch `Tracking.strings` und `values/tracking.xml`. Lässt sich eine Datei nicht erzeugen, wird keine geschrieben. Einzelne Dateiarten exportierst du mit `--kind`:
@@ -636,6 +660,12 @@ Fehlt Punkt 4 und ändert der Proxy den `Host`, schlagen Schreibzugriffe mit 403
     },
     "settings.face_id": {
       "de": "Mit Face ID entsperren"
+    }
+  },
+  "infoPlist": {
+    "NSCameraUsageDescription": {
+      "de": "Damit du Belege mit der Kamera scannen kannst.",
+      "en": "So you can scan receipts with your camera."
     }
   }
 }

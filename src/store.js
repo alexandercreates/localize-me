@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { CATEGORIES, isPluralKey, isPluralValue } from "./plurals.js";
 import { ONLY_PLATFORMS } from "./platforms.js";
+import { INFO_PLIST_KEY_PATTERN, INFO_PLIST_KEY_RULE, normalizeInfoPlist } from "./infoplist.js";
 import { isTrackingValue, normalizeTracking, TRACKING_KEY_PATTERN, TRACKING_KEY_RULE, TRACKING_SECTIONS, trackingResourceName, withoutTrackingPrefix } from "./tracking.js";
 
 // localize.json – eine Datei, git-freundlich: Keys alphabetisch, eine Zeile pro Sprache.
@@ -19,11 +20,13 @@ import { isTrackingValue, normalizeTracking, TRACKING_KEY_PATTERN, TRACKING_KEY_
 //     "onboarding.title": { "de": "Willkommen!" },
 //     "tasks.open": { "de": { "one": "Eine Aufgabe", "other": "#count:int Aufgaben" } }
 //   },
+//   "infoPlist": { "NSCameraUsageDescription": { "de": "Zum Scannen von Belegen." } },
 //   "tracking": { "screens": {}, "events": {}, "parameters": {} }
 // }
 //
 // `output` ist optional: Zielordner für `localize-me export`, relativ zu localize.json.
 // `only` ist optional: Keys, die nur eine Plattform braucht (siehe platforms.js).
+// `infoPlist` ist optional: übersetzte Info.plist-Werte für InfoPlist.strings (siehe infoplist.js).
 // `tracking` ist optional: Screens, Events und Parameter (siehe tracking.js).
 // Plurals (siehe plurals.js): Hat eine Sprache Formen, wird der ganze Key zum Plural.
 
@@ -78,6 +81,7 @@ export function normalize(data) {
   }
   if (Object.keys(trackingOutput).length) output.tracking = trackingOutput;
   const tracking = normalizeTracking(data?.tracking);
+  const infoPlist = normalizeInfoPlist(data?.infoPlist);
   const only = {};
   for (const name of Object.keys(data?.only || {}).sort((a, b) => a.localeCompare(b))) {
     if (Object.hasOwn(keys, name) && ONLY_PLATFORMS.includes(data.only[name])) only[name] = data.only[name];
@@ -88,6 +92,7 @@ export function normalize(data) {
     ...(Object.keys(output).length && { output }),
     ...(Object.keys(only).length && { only }),
     keys,
+    ...(infoPlist && { infoPlist }),
     ...(tracking && { tracking }),
   };
 }
@@ -245,13 +250,37 @@ export class Store {
     if (code === this.project.base) throw new ValidationError("Die Basissprache lässt sich nicht entfernen.");
     if (!this.project.languages.some((l) => l.code === code)) throw new ValidationError(`Die Sprache ${code} gibt es nicht.`);
     this.project.languages = this.project.languages.filter((l) => l.code !== code);
-    if (purge) for (const values of Object.values(this.project.keys)) delete values[code];
+    if (purge) for (const values of [...Object.values(this.project.keys), ...Object.values(this.project.infoPlist ?? {})]) delete values[code];
     this.save();
   }
 
   setBase(code) {
     if (!this.project.languages.some((l) => l.code === code)) throw new ValidationError(`Die Sprache ${code} gibt es nicht.`);
     this.project.base = code;
+    this.save();
+  }
+
+  // ---------- Info.plist ----------
+
+  /** Setzt einen Info.plist-Text. Ein leerer Text entfernt die Sprache, ohne Texte verschwindet der Key aus der Datei. */
+  setInfoPlistValue(key, lang, value) {
+    key = String(key || "").trim();
+    if (!key) throw new ValidationError("Gib einen Key ein, zum Beispiel NSCameraUsageDescription.");
+    if (!INFO_PLIST_KEY_PATTERN.test(key) || key === RESERVED) throw new ValidationError(INFO_PLIST_KEY_RULE);
+    if (!LANG_PATTERN.test(lang)) throw new ValidationError(`Ungültiger Sprachcode: ${lang}`);
+    if (typeof value !== "string") throw new ValidationError("Der Text muss eine Zeichenkette sein.");
+    const infoPlist = (this.project.infoPlist ??= {});
+    const values = Object.hasOwn(infoPlist, key) ? infoPlist[key] : (infoPlist[key] = {});
+    if (value === "") delete values[lang];
+    else values[lang] = value;
+    if (!Object.keys(values).length) delete infoPlist[key];
+    this.save();
+  }
+
+  /** Entfernt alle Texte eines Info.plist-Keys. */
+  deleteInfoPlistKey(key) {
+    if (!Object.hasOwn(this.project.infoPlist ?? {}, key)) throw new ValidationError(`„${key}“ hat keine Texte.`);
+    delete this.project.infoPlist[key];
     this.save();
   }
 

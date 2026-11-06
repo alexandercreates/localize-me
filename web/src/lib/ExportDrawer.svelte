@@ -40,6 +40,10 @@
   const outputs = $derived(app.targets);
   // CSV gibt es nur für Texte. In der Tracking-Ansicht zeigt das Fenster, was fürs Tracking noch fehlt.
   const forTracking = $derived(app.view === "tracking");
+  // InfoPlist.strings entsteht mit den Texten im iOS-Ordner, CSV gibt es dafür nicht.
+  const forInfoPlist = $derived(app.view === "infoplist");
+  const infoPlistMissing = $derived(forInfoPlist && !outputs.some((t) => t.kind === "localizable" && t.platform === "ios"));
+  const noCsv = $derived(forTracking || forInfoPlist);
   const trackingMissing = $derived(forTracking && !outputs.some((t) => t.kind === "tracking"));
   let writing = $state(false);
   // Commit/Push/Befehl nach dem Export – nur per CLI einstellbar (--commit, --push, --after-export).
@@ -118,6 +122,8 @@
         <h2 id="export-title">Exportieren</h2>
         {#if forTracking}
           <p>{app.trackingCount} Einträge im Tracking</p>
+        {:else if forInfoPlist}
+          <p>{app.infoPlistKeys.length} Info.plist-Texte · {app.languages.length} {app.languages.length === 1 ? "Sprache" : "Sprachen"}</p>
         {:else}
           <p>{keys.length} Keys · {langs.map((c) => app.langName(c)).join(" → ")}</p>
         {/if}
@@ -135,6 +141,16 @@
     "ios": "../ios/App/Resources",
     "android": "../android/app/src/main/res"
   }
+}`}</pre>
+        </section>
+      {/if}
+
+      {#if infoPlistMissing}
+        <section class="setup" aria-labelledby="infoplist-setup-title">
+          <h3 id="infoplist-setup-title" class="label">Zielordner für iOS eintragen</h3>
+          <p class="note"><span class="mono">InfoPlist.strings</span> landet in denselben <span class="mono">.lproj</span>-Ordnern wie <span class="mono">Localizable.strings</span>. Trag in <span class="mono">localize.json</span> ein, wo die liegen. Pfade sind relativ zur Datei:</p>
+          <pre class="snippet">{`"output": {
+  "ios": "../ios/App/Resources"
 }`}</pre>
         </section>
       {/if}
@@ -183,10 +199,10 @@
             </div>
           {/if}
         </section>
-        {#if !forTracking}<h3 class="label csv-title">Oder als CSV</h3>{/if}
+        {#if !noCsv}<h3 class="label csv-title">Oder als CSV</h3>{/if}
       {/if}
 
-      {#if !forTracking}
+      {#if !noCsv}
       <fieldset>
         <legend class="label">Plattform</legend>
         <div class="segmented">
@@ -239,7 +255,7 @@
       {/if}
     </div>
 
-    {#if !forTracking}
+    {#if !noCsv}
     <footer>
       <Button variant={outputs.length ? "secondary" : "primary"} {href} download={filename} icon="download" class="wide" onclick={() => app.notify("CSV wird heruntergeladen.")}>CSV herunterladen</Button>
       <button type="button" class="cli" onclick={copy} title="Befehl kopieren">

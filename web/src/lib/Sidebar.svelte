@@ -78,12 +78,15 @@
     <button type="button" class={["ns", app.view === "localizable" && "active"]} aria-current={app.view === "localizable" ? "page" : undefined} onclick={() => app.setView("localizable")}>
       <Icon name="languages" size={16} /><span class="ns-name">Localizable</span><span class="mono count">{app.keyNames.length}</span>
     </button>
+    <button type="button" class={["ns", app.view === "infoplist" && "active"]} aria-current={app.view === "infoplist" ? "page" : undefined} onclick={() => app.setView("infoplist")}>
+      <Icon name="shield" size={16} /><span class="ns-name">InfoPlist</span><span class="mono count">{Object.keys(app.infoPlist).length}</span>
+    </button>
     <button type="button" class={["ns", app.view === "tracking" && "active"]} aria-current={app.view === "tracking" ? "page" : undefined} onclick={() => app.setView("tracking")}>
       <Icon name="activity" size={16} /><span class="ns-name">Tracking</span><span class="mono count">{app.trackingCount}</span>
     </button>
   </nav>
 
-  {#if app.view === "localizable"}
+  {#if app.view !== "tracking"}
   <nav class="section" aria-label="Sprachen">
     <div class="section-head">
       <span class="label">Sprachen</span>
@@ -140,7 +143,9 @@
       <button type="button" class="add" onclick={openAdd}><Icon name="plus" size={16} />Sprache hinzufügen</button>
     {/if}
   </nav>
+  {/if}
 
+  {#if app.view === "localizable"}
   <nav class="section namespaces" aria-label="Bereiche">
     <div class="section-head"><span class="label">Bereiche</span></div>
     {#if app.keyNames.length}

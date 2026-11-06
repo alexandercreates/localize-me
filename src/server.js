@@ -316,6 +316,21 @@ export function createServer({
         return send(res, 200, projectPayload());
       }
 
+      // PUT /api/infoplist/:key {lang, value} – leerer Text entfernt die Sprache
+      if (method === "PUT" && parts[1] === "infoplist" && parts.length === 3) {
+        const body = await readJson(req);
+        store.setInfoPlistValue(parts[2], String(body.lang || ""), body.value);
+        broadcast("change");
+        return send(res, 200, projectPayload());
+      }
+
+      // DELETE /api/infoplist/:key
+      if (method === "DELETE" && parts[1] === "infoplist" && parts.length === 3) {
+        store.deleteInfoPlistKey(parts[2]);
+        broadcast("change");
+        return send(res, 200, projectPayload());
+      }
+
       // POST /api/tracking/:section {key, value?, description?}
       if (method === "POST" && parts[1] === "tracking" && parts.length === 3) {
         const { key, ...fields } = await readJson(req);

@@ -9,6 +9,7 @@
   import Filters from "./lib/Filters.svelte";
   import KeyTable from "./lib/KeyTable.svelte";
   import Tracking from "./lib/Tracking.svelte";
+  import InfoPlist from "./lib/InfoPlist.svelte";
   import ExportDrawer from "./lib/ExportDrawer.svelte";
   import SetupNotice from "./lib/SetupNotice.svelte";
   import Icon from "./lib/ui/Icon.svelte";
@@ -56,8 +57,8 @@
 
   <main bind:this={main}>
     <SetupNotice />
-    {#if app.project && app.view === "tracking"}
-      <Tracking bind:searchInput />
+    {#if app.project && (app.view === "tracking" || app.view === "infoplist")}
+      {#if app.view === "tracking"}<Tracking bind:searchInput />{:else}<InfoPlist bind:searchInput onaddlanguage={addLanguage} />{/if}
       <p class={["status", app.connection]}>
         <span class="dot"></span>
         <span>

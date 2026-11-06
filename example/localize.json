@@ -26,6 +26,15 @@
       "en": "Welcome!"
     }
   },
+  "infoPlist": {
+    "NSCameraUsageDescription": {
+      "de": "Damit du Belege mit der Kamera scannen kannst.",
+      "en": "So you can scan receipts with your camera."
+    },
+    "NSFaceIDUsageDescription": {
+      "de": "Damit du die App mit Face ID entsperren kannst."
+    }
+  },
   "tracking": {
     "screens": {
       "startseite": {
