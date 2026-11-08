@@ -505,6 +505,7 @@ Sicher das Volume dann regelmäßig per Backup, sonst gibt es keine Kopie der Te
 
 ### Für beide Varianten
 
+- **`localize.json` aktualisieren:** Über **Importieren** oben in der Oberfläche lädst du eine Datei von deinem Rechner hoch. Du siehst vorab, welche Keys und Sprachen sich ändern, erst danach wird die Datei im Container ersetzt. Die alte Datei bleibt als `localize.json.bak` daneben liegen, immer nur die letzte. `output` bleibt wie im Container eingetragen, und ins Repo kommt die neue Datei mit dem nächsten Commit beim Export.
 - **Persistenter Speicher:** `/data` muss ein Volume sein (bei Azure z. B. Azure Files), sonst sind die Texte nach einem Neustart oder Redeploy weg. Bei Variante B gibt es dann gar keine Kopie mehr, bei Variante A fehlen die nicht gepushten Änderungen.
 - **Neustarts:** Mit `--restart unless-stopped` (bzw. als Azure Container App oder App Service) startet der Container nach einem Absturz oder Server-Neustart von selbst wieder.
 - **Reverse Proxy:** Der Proxy muss den ursprünglichen `Host`-Header durchreichen (nginx: `proxy_set_header Host $http_host;`) oder du trägst die öffentliche Adresse als `PUBLIC_ORIGIN` ein. Sonst lehnt localize-me Änderungen als fremde Herkunft ab. Läuft localize-me auf `127.0.0.1` und der Proxy auf demselben Rechner, trag dessen Hostnamen mit `--allowed-host` ein. Unter einem Pfad statt auf einer eigenen Domain: siehe [Pfadpräfix](#hinter-einem-reverse-proxy-mit-pfadpräfix).

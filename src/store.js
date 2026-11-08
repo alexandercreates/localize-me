@@ -104,6 +104,51 @@ function normalizeForms(value) {
   return forms;
 }
 
+const isObject = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
+
+/** Hochgeladene Datei streng prüfen: `normalize` würde Ungültiges still weglassen und so Texte verlieren. */
+function checkImport(data) {
+  if (!isObject(data) || !isObject(data.keys) || !Array.isArray(data.languages) || !data.languages.length) {
+    throw new ValidationError("Das ist keine localize.json: „languages“ oder „keys“ fehlt.");
+  }
+  const codes = data.languages.map((l) => l?.code);
+  const invalid = codes.filter((c) => typeof c !== "string" || !LANG_PATTERN.test(c));
+  if (invalid.length) throw new ValidationError(`Ungültige Sprachcodes: ${invalid.join(", ")} (erlaubt z. B. en, pt-BR, zh-Hans).`);
+  if (new Set(codes).size !== codes.length) throw new ValidationError("Eine Sprache steht doppelt unter „languages“.");
+  if (!codes.includes(data.base)) throw new ValidationError(`Die Basissprache „${data.base}“ steht nicht unter „languages“.`);
+  for (const [name, values] of Object.entries(data.keys)) {
+    if (!KEY_PATTERN.test(name) || name === RESERVED) throw new ValidationError(`Ungültiger Key: „${name}“.`);
+    if (!isObject(values)) throw new ValidationError(`„${name}“: Erwarte ein Objekt mit einem Eintrag pro Sprache.`);
+    for (const [code, value] of Object.entries(values)) {
+      const valid = typeof value === "string" || (isPluralValue(value) && Object.values(value).every((t) => typeof t === "string"));
+      if (!valid) throw new ValidationError(`„${name}“ (${code}): Erwarte einen Text oder Pluralformen.`);
+    }
+  }
+  for (const section of ["only", "infoPlist", "tracking"]) {
+    if (data[section] !== undefined && !isObject(data[section])) throw new ValidationError(`„${section}“ muss ein Objekt sein.`);
+  }
+}
+
+const IMPORT_SECTIONS = { only: "Plattform-Zuordnung", infoPlist: "Info.plist-Texte", tracking: "Tracking" };
+
+function importSummary(current, next) {
+  const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  const names = Object.keys(next.keys);
+  const known = (name) => Object.hasOwn(current.keys, name);
+  const codes = (project) => project.languages.map((l) => l.code);
+  return {
+    unchanged: serialize(current) === serialize(next),
+    total: names.length,
+    added: names.filter((n) => !known(n)).length,
+    changed: names.filter((n) => known(n) && !same(current.keys[n], next.keys[n])).length,
+    removed: Object.keys(current.keys).filter((n) => !Object.hasOwn(next.keys, n)),
+    languagesAdded: codes(next).filter((c) => !codes(current).includes(c)),
+    languagesRemoved: codes(current).filter((c) => !codes(next).includes(c)),
+    base: next.base === current.base ? "" : next.base,
+    sections: Object.keys(IMPORT_SECTIONS).filter((k) => !same(current[k], next[k])).map((k) => IMPORT_SECTIONS[k]),
+  };
+}
+
 export function serialize(project) {
   return JSON.stringify(normalize(project), null, 2) + "\n";
 }
@@ -152,6 +197,28 @@ export class Store {
 
   ensureFile() {
     if (!fs.existsSync(this.file)) this.save();
+  }
+
+  // ---------- Import ----------
+
+  // `output` bleibt immer das des Servers: Es entscheidet, wohin der Export schreibt, und eine Datei vom Laptop kennt die Pfade im Container nicht.
+  #imported(data) {
+    checkImport(data);
+    return normalize({ ...data, output: this.project.output });
+  }
+
+  /** Was ein Import ändern würde, ohne etwas zu schreiben. */
+  previewImport(data) {
+    return importSummary(this.project, this.#imported(data));
+  }
+
+  /** Ersetzt das Projekt. Die bisherige Datei bleibt als <datei>.bak erhalten, eine Generation. */
+  importProject(data) {
+    const next = this.#imported(data);
+    if (serialize(next) === serialize(this.project)) return;
+    if (fs.existsSync(this.file)) fs.copyFileSync(this.file, this.file + ".bak");
+    this.project = next;
+    this.save();
   }
 
   // ---------- Änderungen ----------

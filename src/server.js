@@ -12,6 +12,7 @@ import { internalOrigins, isRedirectStatus, publicOrigins, renderIndexHtml, reso
 const here = path.dirname(fileURLToPath(import.meta.url));
 const UI_DIR = path.join(here, "..", "ui");
 const MAX_BODY = 1024 * 1024;
+const MAX_IMPORT_BODY = 20 * 1024 * 1024; // ganze localize.json mit vielen Sprachen
 const MIME = {
   ".html": "text/html; charset=utf-8",
   ".js": "text/javascript; charset=utf-8",
@@ -150,7 +151,7 @@ export function createServer({
     };
   }
 
-  async function readJson(req) {
+  async function readJson(req, limit = MAX_BODY) {
     if (!/^application\/json\b/.test(req.headers["content-type"] || "")) {
       throw new ValidationError("Erwarte JSON (Content-Type: application/json).");
     }
@@ -158,7 +159,7 @@ export function createServer({
     const chunks = [];
     for await (const chunk of req) {
       size += chunk.length;
-      if (size > MAX_BODY) throw new ValidationError("Anfrage ist zu groß.");
+      if (size > limit) throw new ValidationError("Anfrage ist zu groß.");
       chunks.push(chunk);
     }
     try {
@@ -288,6 +289,16 @@ export function createServer({
         } finally {
           exporting = false;
         }
+      }
+
+      // POST /api/import[?preview=1] – Body ist der Inhalt einer localize.json. Mit preview nur die Übersicht der Änderungen.
+      if (method === "POST" && parts[1] === "import" && parts.length === 2) {
+        const data = await readJson(req, MAX_IMPORT_BODY);
+        if (url.searchParams.get("preview") === "1") return send(res, 200, store.previewImport(data));
+        if (exporting) return send(res, 409, { error: "Ein Export läuft gerade. Bitte kurz warten." });
+        store.importProject(data);
+        broadcast("change");
+        return send(res, 200, projectPayload());
       }
 
       // POST /api/keys {key, values, plural?, only?}

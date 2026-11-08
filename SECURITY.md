@@ -27,6 +27,7 @@ Sicherheitsupdates gibt es nur für die neueste veröffentlichte Version auf npm
   Browser überschreiben. localize-me setzt keine Cookies.
 - **Befehle und Arbeitsbranches** (`--commit`, `--push`, `--after-export`, `--localizable-branch`,
   `--tracking-branch`) lassen sich nur über die Kommandozeile setzen, nie über `localize.json`.
+- **Import:** Wer die Oberfläche erreicht, kann die `localize.json` per Upload ersetzen. `output` übernimmt der Import bewusst nicht, ein Upload kann also keine anderen Schreibziele festlegen.
 - **`localize.json`** bestimmt mit `output`, wohin der Export schreibt. Behandle Änderungen daran
   wie Code-Änderungen (Review im Pull Request).
 - **Veröffentlichung** auf npm nur aus GitHub Actions per Trusted Publishing mit Provenance –

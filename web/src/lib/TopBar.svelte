@@ -2,6 +2,7 @@
   import { app } from "./model.svelte.js";
   import Icon from "./ui/Icon.svelte";
   import Button from "./ui/Button.svelte";
+  import ImportFile from "./ImportFile.svelte";
 
   let { searchInput = $bindable(), onaddlanguage } = $props();
 
@@ -41,6 +42,7 @@
     <kbd>{isMac ? "⌘K" : "Strg K"}</kbd>
   </div>
 
+  <ImportFile />
   <Button variant={exportVariant} icon="download" disabled={!app.keyNames.length} onclick={() => (app.exportOpen = true)}>Exportieren</Button>
 </header>
 
