@@ -260,7 +260,7 @@ function exportCsv(project) {
     : [project.base, ...project.languages.map((l) => l.code).filter((c) => c !== project.base)];
 
   let csv;
-  try { csv = buildCsv(project, { platform, languages: langs, delimiter }); } catch (e) { fail(e.message); }
+  try { csv = buildCsv(project, { platform, languages: langs, delimiter, strict: true }); } catch (e) { fail(e.message); }
   const out = path.resolve(opts.out || csvFilename(langs, platform));
   fs.mkdirSync(path.dirname(out), { recursive: true });
   fs.writeFileSync(out, csv);

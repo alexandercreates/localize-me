@@ -9,6 +9,7 @@
 //
 // Reihenfolge und Typ legt der Basistext fest. Bei mehr als einem Platzhalter wird
 // positionsbezogen exportiert (%1$@ / %1$s), damit Übersetzungen umstellen dürfen.
+// Das gilt auch, wenn derselbe Platzhalter mehrfach vorkommt, denn er ist nur ein Argument.
 
 export const PLATFORMS = ["ios", "android", "raw"];
 
@@ -17,8 +18,12 @@ const FORMATS = {
   android: { text: "s", int: "d", float: "f" },
 };
 
-const TOKEN = /##|#([A-Za-z_][A-Za-z0-9_]*)(?::(int|float|text|plural))?/g;
-const TOKEN_OR_PERCENT = /##|#([A-Za-z_][A-Za-z0-9_]*)(?::(int|float|text|plural))?|%/g;
+// Lateinische Buchstaben samt Umlauten und Akzenten. Andere Schriften gehören nicht dazu,
+// sonst würde in „共#count个“ der chinesische Text hinter dem Platzhalter zum Namen.
+export const NAME = "[\\p{Script=Latin}_][\\p{Script=Latin}\\u0300-\\u036f0-9_]*";
+
+const TOKEN = new RegExp(`##|#(${NAME})(?::(int|float|text|plural))?`, "gu");
+const TOKEN_OR_PERCENT = new RegExp(`##|#(${NAME})(?::(int|float|text|plural))?|%`, "gu");
 
 /**
  * Alle Platzhalter eines Textes in Reihenfolge, `type` ist null ohne explizite Angabe.
@@ -61,7 +66,8 @@ export function convert(text, platform, baseText = text) {
 
   const spec = specOf(baseText).list;
   const formatted = parse(text).length > 0;
-  const positional = spec.length > 1;
+  const repeated = parse(baseText).length > 1 || parse(text).filter((p) => p.name === spec[0]?.name).length > 1;
+  const positional = spec.length > 1 || repeated;
 
   return text.replace(TOKEN_OR_PERCENT, (m, name, type) => {
     if (m === "##") return "#";

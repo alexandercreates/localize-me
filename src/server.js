@@ -254,7 +254,7 @@ export function createServer({
         const delimiter = url.searchParams.get("delimiter") === "," ? "," : ";";
         let csv;
         try {
-          csv = buildCsv(store.project, { platform, languages: langs, delimiter });
+          csv = buildCsv(store.project, { platform, languages: langs, delimiter, strict: true });
         } catch (e) {
           throw new ValidationError(e.message);
         }

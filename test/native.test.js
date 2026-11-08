@@ -6,6 +6,8 @@ import path from "node:path";
 import { buildIosStrings, buildAndroidXml, checkAndroidNames, valuesDir, lprojName, writeNative, configuredOutputs } from "../src/native.js";
 import { normalize, Store, ValidationError } from "../src/store.js";
 import { buildCsv } from "../src/csv.js";
+import { nativeFiles } from "../src/native.js";
+import { placeholderProblems } from "../src/plurals.js";
 
 const project = normalize({
   base: "de",
@@ -133,4 +135,40 @@ test("Store: only beim Anlegen, Ändern, Umbenennen und Löschen", () => {
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
+});
+
+const mismatched = normalize({
+  base: "de",
+  languages: [{ code: "de", name: "Deutsch" }, { code: "en", name: "Englisch" }],
+  keys: { "a.b": { de: "#name hat #count:int Artikel", en: "#nom a #nombre articles" } },
+});
+
+test("Export bricht bei Platzhaltern ab, die nicht zum Basistext passen", () => {
+  for (const platform of ["ios", "android"]) {
+    assert.throws(() => nativeFiles(mismatched, platform), /„a\.b“ \(en\): Fehlt: #name, #count; Nicht im Basistext: #nom, #nombre/);
+    assert.throws(() => buildCsv(mismatched, { platform, strict: true }), /Export abgebrochen/);
+  }
+});
+
+test("neutrale CSV und Vorschau bleiben trotz Platzhalter-Fehlern möglich", () => {
+  assert.match(buildCsv(mismatched, { platform: "raw", strict: true, bom: false }), /#nombre/);
+  assert.match(buildCsv(mismatched, { platform: "android", bom: false }), /a_b/);
+  assert.doesNotThrow(() => buildCsv(mismatched, { platform: "android", languages: ["de"], strict: true }));
+});
+
+test("Plural: fehlende Zahl in „eins“ und fehlende Formen sind kein Platzhalter-Fehler", () => {
+  const p = normalize({
+    base: "de",
+    languages: [{ code: "de", name: "Deutsch" }, { code: "en", name: "Englisch" }],
+    keys: { t: { de: { one: "Eine Aufgabe", other: "#count:int Aufgaben" }, en: { other: "#count tasks" } } },
+  });
+  assert.deepEqual(placeholderProblems(p, "android"), []);
+  p.keys.t.en = { one: "One", other: "#anzahl tasks" };
+  assert.deepEqual(placeholderProblems(p, "android"), ["„t“ (en, andere): Nicht im Basistext: #anzahl"]);
+});
+
+test("Key nur für die andere Plattform blockiert den Export nicht", () => {
+  const p = { ...mismatched, only: { "a.b": "ios" } };
+  assert.doesNotThrow(() => nativeFiles(p, "android"));
+  assert.throws(() => nativeFiles(p, "ios"), /Export abgebrochen/);
 });

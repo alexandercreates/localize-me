@@ -13,7 +13,8 @@
 //
 //   "#count:int von #required:plural Plätzen belegt"   → Form richtet sich nach #required
 
-import { check, specOf } from "./placeholders.js";
+import { check, NAME, specOf } from "./placeholders.js";
+import { exportsTo } from "./platforms.js";
 
 export const CATEGORIES = ["zero", "one", "two", "few", "many", "other"];
 
@@ -60,7 +61,7 @@ export const countCandidates = (baseForms) => specOf(baseForms?.other || "").lis
  */
 export function withCount(text, name) {
   let done = false;
-  return String(text).replace(/#([A-Za-z_][A-Za-z0-9_]*):(int|plural)\b/g, (m, n) => {
+  return String(text).replace(new RegExp(`#(${NAME}):(int|plural)\\b`, "gu"), (m, n) => {
     if (n !== name || done) return `#${n}:int`;
     done = true;
     return `#${n}:plural`;
@@ -96,4 +97,38 @@ export function checkPlural(baseForms, forms, lang, { isBase = false } = {}) {
     }
   }
   return problems;
+}
+
+/**
+ * Platzhalter-Fehler aller Texte, die für `platform` exportiert werden, als lesbare Zeilen.
+ * Nur was die Formatierung betrifft: Fehlende Texte oder Pluralformen sind kein Fehler, dafür gibt es den Rückfall auf die Basissprache.
+ */
+export function placeholderProblems(project, platform, languages = project.languages.map((l) => l.code)) {
+  const out = [];
+  for (const key of Object.keys(project.keys).filter((k) => exportsTo(project, k, platform)).sort((a, b) => a.localeCompare(b))) {
+    const values = project.keys[key];
+    const plural = isPluralKey(values);
+    const baseText = (plural ? values[project.base]?.other : values[project.base]) || "";
+    const optional = plural ? [countOf(values[project.base])] : [];
+    const baseProblems = check(baseText, "");
+    for (const lang of languages) {
+      const forms = plural ? (isPluralValue(values[lang]) ? values[lang] : {}) : { text: values[lang] };
+      // Plurals ohne Form „andere“ werden gar nicht exportiert.
+      if (plural && (!baseText.trim() || !forms.other)) continue;
+      for (const form of plural ? categoriesFor(lang) : ["text"]) {
+        const found = check(baseText, forms[form], { optional }).filter((p) => lang === project.base || !baseProblems.includes(p));
+        if (found.length) out.push(`„${key}“ (${lang}${plural ? `, ${CATEGORY_LABELS[form]}` : ""}): ${found.join("; ")}`);
+      }
+    }
+  }
+  return out;
+}
+
+/** Bricht ab, wenn Platzhalter nicht zum Basistext passen – sonst entstünden Formate, die zur Laufzeit falsch einsetzen oder abstürzen. */
+export function assertPlaceholders(project, platform, languages) {
+  const problems = placeholderProblems(project, platform, languages);
+  if (!problems.length) return;
+  const shown = problems.slice(0, 20);
+  if (problems.length > shown.length) shown.push(`… und ${problems.length - shown.length} weitere`);
+  throw new Error(`Export abgebrochen, Platzhalter passen nicht zum Basistext:\n${shown.join("\n")}`);
 }

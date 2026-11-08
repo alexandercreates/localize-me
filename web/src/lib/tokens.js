@@ -1,6 +1,7 @@
 // Zerlegt Texte für die Anzeige in normale Teile und hervorgehobene Platzhalter.
-// Muster wie in src/placeholders.js (dort nicht exportiert).
-const NEUTRAL = /##|#[A-Za-z_][A-Za-z0-9_]*(?::(?:int|float|text|plural))?/g;
+import { NAME } from "@shared/placeholders.js";
+
+const NEUTRAL = new RegExp(`##|#${NAME}(?::(?:int|float|text|plural))?`, "gu");
 const PRINTF = /%%|%(?:\d+\$)?(?:@|lld|d|s|f)/g;
 
 function split(text, re) {
@@ -17,4 +18,5 @@ function split(text, re) {
 
 export const neutralSegments = (text) => split(text, NEUTRAL);
 export const printfSegments = (text) => split(text, PRINTF);
-export const hasTokens = (text) => /#[A-Za-z_]|##/.test(text);
+const TOKEN_START = new RegExp(`#${NAME}|##`, "u");
+export const hasTokens = (text) => TOKEN_START.test(text);

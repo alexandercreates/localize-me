@@ -61,7 +61,7 @@ Hallo #name, schön dich zu sehen
 - **Mehrere Platzhalter** werden positionsbezogen exportiert (`%1$@ hat %2$lld Artikel` / `%1$s hat %2$d Artikel`). Reihenfolge und Typ legt der Basistext fest, Übersetzungen dürfen die Platzhalter also umstellen.
 - **Typ nur einmal angeben:** Steht im Basistext `#count:int`, reicht in der Übersetzung `#count`.
 - **Prozentzeichen** werden zu `%%`, sobald ein Text Platzhalter enthält.
-- Die Oberfläche warnt bei fehlenden, zusätzlichen oder abweichend typisierten Platzhaltern.
+- Die Oberfläche warnt bei fehlenden, zusätzlichen oder abweichend typisierten Platzhaltern. Der Export für iOS und Android bricht in diesen Fällen mit einer Liste der betroffenen Keys ab, nur die neutrale CSV bleibt möglich.
 
 ## Plurals
 

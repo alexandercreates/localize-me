@@ -1,6 +1,6 @@
 import { exportsTo, resourceName } from "./platforms.js";
 import { convert } from "./placeholders.js";
-import { CATEGORIES, categoriesFor, isPluralKey, isPluralValue } from "./plurals.js";
+import { assertPlaceholders, CATEGORIES, categoriesFor, isPluralKey, isPluralValue } from "./plurals.js";
 
 /**
  * Baut die CSV-Datei. Plurals stehen mit einer Zeile pro Form darin: `tasks.open[one]`, `tasks.open[other]`.
@@ -12,14 +12,16 @@ import { CATEGORIES, categoriesFor, isPluralKey, isPluralValue } from "./plurals
  * @param {string[]} [options.languages]  Sprachcodes in Spaltenreihenfolge; Standard: alle, Basis zuerst
  * @param {string} [options.delimiter=";"]
  * @param {boolean} [options.bom=true]  UTF-8-BOM, damit Excel Umlaute richtig zeigt
+ * @param {boolean} [options.strict=false]  bricht bei Platzhalter-Fehlern ab (außer raw, da bleiben die Platzhalter unverändert)
  */
-export function buildCsv(project, { platform = "raw", languages, delimiter = ";", bom = true } = {}) {
+export function buildCsv(project, { platform = "raw", languages, delimiter = ";", bom = true, strict = false } = {}) {
   const base = project.base;
   const all = [base, ...project.languages.map((l) => l.code).filter((c) => c !== base)];
   const langs = languages && languages.length ? languages : all;
   for (const l of langs) {
     if (!project.languages.some((x) => x.code === l)) throw new Error(`Unbekannte Sprache: ${l}`);
   }
+  if (strict && platform !== "raw") assertPlaceholders(project, platform, langs);
 
   const q = (s) => '"' + String(s ?? "").replace(/"/g, '""') + '"';
   const lines = [["key", ...langs].map(q).join(delimiter)];

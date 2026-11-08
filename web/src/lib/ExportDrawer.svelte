@@ -1,6 +1,6 @@
 <script>
   import { buildCsv, csvFilename } from "@shared/csv.js";
-  import { isFilled } from "@shared/plurals.js";
+  import { isFilled, placeholderProblems } from "@shared/plurals.js";
   import { exportsTo } from "@shared/platforms.js";
   import { app, prefs } from "./model.svelte.js";
   import { printfSegments } from "./tokens.js";
@@ -35,6 +35,8 @@
   // Keys, die nur die andere Plattform braucht, landen nicht in der Datei und zählen nicht mit.
   const keys = $derived(app.keyNames.filter((k) => exportsTo(app.project, k, platform)));
   const missing = $derived(langs.slice(1).reduce((n, code) => n + keys.filter((k) => !isFilled(app.project.keys[k][code])).length, 0));
+  // Der Server lehnt eine CSV mit kaputten Platzhaltern ab, deshalb gar nicht erst anbieten. Neutral lässt sie unverändert.
+  const csvProblems = $derived(app.project && platform !== "raw" ? placeholderProblems(app.project, platform, langs) : []);
   const href = $derived(publicUrl("/api/export?" + new URLSearchParams({ platform, delimiter, langs: langs.join(",") })));
   // Zielordner aus "output" in localize.json – dann schreibt der Server die Dateien direkt ins App-Projekt.
   const outputs = $derived(app.targets);
@@ -249,6 +251,10 @@
         </div>
       </section>
 
+      {#if csvProblems.length}
+        <p class="callout"><Icon name="alert" size={16} />{csvProblems.length === 1 ? "1 Platzhalter-Fehler" : `${csvProblems.length} Platzhalter-Fehler`} verhindern den Export, zuerst: {csvProblems[0]}</p>
+      {/if}
+
       {#if missing}
         <p class="callout"><Icon name="alert" size={16} />{missing === 1 ? "1 Text fehlt" : `${missing} Texte fehlen`} noch und {missing === 1 ? "wird" : "werden"} leer exportiert.</p>
       {/if}
@@ -257,7 +263,11 @@
 
     {#if !noCsv}
     <footer>
-      <Button variant={outputs.length ? "secondary" : "primary"} {href} download={filename} icon="download" class="wide" onclick={() => app.notify("CSV wird heruntergeladen.")}>CSV herunterladen</Button>
+      {#if csvProblems.length}
+        <Button variant={outputs.length ? "secondary" : "primary"} icon="download" class="wide" disabled>CSV herunterladen</Button>
+      {:else}
+        <Button variant={outputs.length ? "secondary" : "primary"} {href} download={filename} icon="download" class="wide" onclick={() => app.notify("CSV wird heruntergeladen.")}>CSV herunterladen</Button>
+      {/if}
       <button type="button" class="cli" onclick={copy} title="Befehl kopieren">
         <Icon name={copied ? "check" : "terminal"} size={14} /><span class="mono">{copied ? "Kopiert" : cli}</span>
       </button>

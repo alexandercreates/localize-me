@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { convert, parse, specOf } from "./placeholders.js";
 import { escapeStrings, escapeXml, exportsTo, lprojName, resourceName } from "./platforms.js";
-import { categoriesFor, countOf, isPluralKey, isPluralValue } from "./plurals.js";
+import { assertPlaceholders, categoriesFor, countOf, isPluralKey, isPluralValue } from "./plurals.js";
 import { LANG_PATTERN } from "./store.js";
 import { buildInfoPlistStrings, checkInfoPlist, hasInfoPlist, INFO_PLIST_FILENAME } from "./infoplist.js";
 
@@ -84,12 +84,14 @@ export function buildIosStringsdict(project, lang) {
   for (const key of pluralKeys(project, "ios")) {
     const entry = pluralEntry(project, key, lang, "ios");
     if (!entry) continue;
+    // Name der Variable im Format, dort lieber nur ASCII.
+    const variable = entry.count.replace(/[^A-Za-z0-9_]/g, "_");
     lines.push(
       `\t<key>${escapePlist(key)}</key>`,
       "\t<dict>",
       "\t\t<key>NSStringLocalizedFormatKey</key>",
-      `\t\t<string>%${entry.positional ? entry.index + "$" : ""}#@${entry.count}@</string>`,
-      `\t\t<key>${entry.count}</key>`,
+      `\t\t<string>%${entry.positional ? entry.index + "$" : ""}#@${variable}@</string>`,
+      `\t\t<key>${variable}</key>`,
       "\t\t<dict>",
       "\t\t\t<key>NSStringFormatSpecTypeKey</key>",
       "\t\t\t<string>NSStringPluralRuleType</string>",
@@ -159,6 +161,7 @@ export function nativeFiles(project, platform) {
   // Sprachcodes werden zu Ordnernamen – aus einer von Hand bearbeiteten localize.json dürfen sie nicht aus dem Ziel herausführen.
   const invalid = project.languages.map((l) => l.code).filter((c) => !LANG_PATTERN.test(c));
   if (invalid.length) throw new Error(`Ungültige Sprachcodes in localize.json: ${invalid.join(", ")} (erlaubt z. B. en, pt-BR, zh-Hans).`);
+  assertPlaceholders(project, platform);
   if (platform === "ios") {
     const plurals = pluralKeys(project, "ios").length > 0;
     const infoPlist = hasInfoPlist(project);

@@ -42,3 +42,23 @@ test("Prüfung findet fehlende, fremde und abweichende Platzhalter", () => {
   assert.deepEqual(check(base, "#name has #count:float"), ["Anderer Typ als im Basistext: #count"]);
   assert.equal(specOf("#a:int #a:float").conflict, "a");
 });
+
+test("derselbe Platzhalter mehrfach ist ein Argument", () => {
+  const base = "#count:int Einträge";
+  assert.equal(convert("#count von #count", "android", base), "%1$d von %1$d");
+  assert.equal(convert("#count:int von #count", "ios"), "%1$lld von %1$lld");
+  assert.equal(convert("#count entries", "android", base), "%d entries");
+  assert.deepEqual(check(base, "#count von #count"), []);
+});
+
+test("Namen mit Umlauten", () => {
+  assert.equal(convert("#anzähl:int Plätze", "android"), "%d Plätze");
+  assert.equal(convert("#plätze:plural frei", "ios"), "%lld frei");
+  assert.equal(convert("#name–#ende Uhr", "android"), "%1$s–%2$s Uhr");
+  assert.deepEqual(check("#anzähl:int Plätze", "#anzähl seats"), []);
+});
+
+test("Text in anderen Schriften wird nicht Teil des Namens", () => {
+  assert.equal(convert("共#count个", "android", "#count:int Stück"), "共%d个");
+  assert.equal(convert("#countшт", "android", "#count:int Stück"), "%dшт");
+});
