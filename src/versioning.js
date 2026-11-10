@@ -20,7 +20,7 @@ function tail(text) {
 // Gemountete Volumes (Docker, Azure Files) gehören oft einem anderen Benutzer als dem Prozess,
 // dann bricht Git mit "dubious ownership" ab. Freigegeben wird nur das Repo, in dem die
 // exportierten Dateien liegen – nur für diesen Aufruf, ohne die globale Git-Konfiguration zu ändern.
-function git(cwd, args, trusted = cwd, env) {
+export function git(cwd, args, trusted = cwd, env) {
   return new Promise((resolve, reject) => {
     execFile("git", ["-c", `safe.directory=${trusted}`, ...args], { cwd, env: env && { ...process.env, ...env }, timeout: 120_000, maxBuffer: 8 * 1024 * 1024 }, (err, stdout, stderr) => {
       if (!err) return resolve(stdout.trim());
@@ -31,7 +31,7 @@ function git(cwd, args, trusted = cwd, env) {
 }
 
 /** Nächster Ordner mit `.git` oberhalb von `dir` – dort sucht auch Git das Repository. */
-function nearestRepo(dir) {
+export function nearestRepo(dir) {
   for (let d = dir; ; d = path.dirname(d)) {
     if (fs.existsSync(path.join(d, ".git"))) return d;
     if (path.dirname(d) === d) return dir;
@@ -105,16 +105,16 @@ export function checkBranchName(name) {
   if (!valid) throw new Error(`Ungültiger Branch-Name „${name}“. Erwartet wird etwas wie texte oder feature/tracking.`);
 }
 
-async function revision(root, ref) {
+export async function revision(root, ref) {
   try { return await git(root, ["rev-parse", "--verify", "--quiet", `${ref}^{commit}`]); } catch { return null; }
 }
 
-async function isAncestor(root, older, newer) {
+export async function isAncestor(root, older, newer) {
   try { await git(root, ["merge-base", "--is-ancestor", older, newer]); return true; } catch { return false; }
 }
 
 /** Remote des Branches, sonst der Standard fürs Pushen, sonst origin. */
-async function remoteOf(root, branch) {
+export async function remoteOf(root, branch) {
   const setting = async (key) => { try { return await git(root, ["config", "--get", key]); } catch { return ""; } };
   const remote = (await setting(`branch.${branch}.remote`)) || (await setting("remote.pushDefault")) || "origin";
   if (!(await git(root, ["remote"])).split("\n").includes(remote)) throw new Error(`Das Repository hat kein Remote „${remote}“.`);

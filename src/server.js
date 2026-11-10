@@ -7,6 +7,7 @@ import { buildCsv, csvFilename } from "./csv.js";
 import { PLATFORMS } from "./placeholders.js";
 import { exportTargets, writeTargets } from "./outputs.js";
 import { afterExport, DEFAULT_MESSAGE } from "./versioning.js";
+import { createSync } from "./sync.js";
 import { internalOrigins, isRedirectStatus, publicOrigins, renderIndexHtml, resolvePublicConfig, resolveRedirect } from "./public-url.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -42,6 +43,7 @@ const SECURITY_HEADERS = {
 /**
  * `uiDir: null` startet nur die API (Entwicklung mit Vite).
  * `versioning`: was nach „Dateien schreiben“ passiert – { commit, push, message, hook, branches }, siehe versioning.js.
+ * `sync`: { interval } hält localize.json auf dem Stand des Remotes, siehe sync.js. Ohne bleibt alles wie gehabt.
  * `host`: Adresse, auf der der Server lauscht. Bei 127.0.0.1/localhost werden nur Anfragen an localhost
  * angenommen – das schützt vor DNS-Rebinding (fremde Domain, die auf 127.0.0.1 zeigt).
  * `allowedHosts`: weitere Hostnamen, z. B. hinter einem Reverse Proxy auf demselben Rechner.
@@ -55,6 +57,7 @@ export function createServer({
   file,
   uiDir = UI_DIR,
   versioning = {},
+  sync: syncOptions,
   host = "127.0.0.1",
   allowedHosts = [],
   publicBasePath,
@@ -72,6 +75,9 @@ export function createServer({
   const hostnames = [...LOOPBACK_HOSTNAMES, ...allowedHosts.map((h) => h.toLowerCase())];
   if (publicConfig.origin) hostnames.push(new URL(publicConfig.origin).hostname);
   let exporting = false;
+  const sync = syncOptions
+    ? createSync({ store, branches: versioning.branches, interval: syncOptions.interval, isBusy: () => exporting, onChange: () => broadcast("change") })
+    : null;
 
   // Änderungen von außen (git pull, Editor) an alle offenen Tabs melden.
   let timer = null;
@@ -148,6 +154,7 @@ export function createServer({
         message: versioning.message || DEFAULT_MESSAGE,
         ...(versioning.branches && { branches: versioning.branches }),
       },
+      ...(sync && { sync: sync.status() }),
     };
   }
 
@@ -270,11 +277,13 @@ export function createServer({
       // danach ggf. Commit/Push und eigener Befehl (Ergebnis unter `after`).
       if (method === "POST" && parts[1] === "export" && parts[2] === "native") {
         const body = req.headers["content-type"] ? await readJson(req) : {};
-        const targets = exportTargets(store.project, store.file);
-        if (!targets.length) throw new ValidationError('Trage in localize.json unter "output" die Zielordner für ios und android ein.');
         if (exporting) return send(res, 409, { error: "Ein Export läuft gerade schon. Bitte kurz warten." });
         exporting = true;
         try {
+          // Vorher abgleichen, damit der Export den neuesten Stand schreibt und der Push nicht am Rebase scheitert.
+          await sync?.run();
+          const targets = exportTargets(store.project, store.file);
+          if (!targets.length) throw new ValidationError('Trage in localize.json unter "output" die Zielordner für ios und android ein.');
           const root = path.dirname(store.file);
           let written;
           try {
@@ -285,10 +294,22 @@ export function createServer({
           const files = written.map((f) => ({ kind: f.kind, platform: f.platform, file: path.relative(root, f.file), changed: f.changed }));
           if (!versioned) return send(res, 200, { files });
           const message = typeof body.message === "string" ? body.message : "";
-          return send(res, 200, { files, after: await afterExport(versioning, { file: store.file, written, message }) });
+          const after = await afterExport(versioning, { file: store.file, written, message });
+          await sync?.exported(after.git);
+          return send(res, 200, { files, after });
         } finally {
           exporting = false;
         }
+      }
+
+      // POST /api/sync/resolve {id, use: "local"|"remote"} – Entscheidung zu einem Konflikt aus dem Abgleich
+      if (method === "POST" && parts[1] === "sync" && parts[2] === "resolve" && parts.length === 3) {
+        if (!sync) return send(res, 404, { error: "Nicht gefunden." });
+        const body = await readJson(req);
+        if (body.use !== "local" && body.use !== "remote") throw new ValidationError('„use“ muss „local“ oder „remote“ sein.');
+        if (!sync.resolve(body.id, body.use)) throw new ValidationError("Diesen Konflikt gibt es nicht mehr.");
+        broadcast("change");
+        return send(res, 200, projectPayload());
       }
 
       // POST /api/import[?preview=1] – Body ist der Inhalt einer localize.json. Mit preview nur die Übersicht der Änderungen.
@@ -397,10 +418,13 @@ export function createServer({
 
   server.on("close", () => {
     watcher?.close();
+    sync?.stop();
     for (const res of clients) res.end();
   });
 
-  return { server, store, publicConfig };
+  sync?.start();
+
+  return { server, store, publicConfig, sync };
 }
 
 /** Startet den Server; ist der Port belegt, wird der nächste probiert. */

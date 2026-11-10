@@ -12,6 +12,7 @@
   import InfoPlist from "./lib/InfoPlist.svelte";
   import ExportDrawer from "./lib/ExportDrawer.svelte";
   import SetupNotice from "./lib/SetupNotice.svelte";
+  import SyncNotice from "./lib/SyncNotice.svelte";
   import Icon from "./lib/ui/Icon.svelte";
 
   let searchInput = $state();
@@ -48,6 +49,9 @@
   }
 
   const shortFile = $derived((app.project?.file || "").split(/[\\/]/).slice(-2).join("/"));
+  const statusNote = $derived(app.project?.sync?.sources?.length
+    ? `Wird laufend abgeglichen mit ${app.project.sync.sources.join(", ")}`
+    : "Änderungen von außen (z. B. git pull) erscheinen sofort");
 </script>
 
 <svelte:window onkeydown={shortcuts} />
@@ -57,6 +61,7 @@
 
   <main bind:this={main}>
     <SetupNotice />
+    <SyncNotice />
     {#if app.project && (app.view === "tracking" || app.view === "infoplist")}
       {#if app.view === "tracking"}<Tracking bind:searchInput />{:else}<InfoPlist bind:searchInput onaddlanguage={addLanguage} />{/if}
       <p class={["status", app.connection]}>
@@ -65,7 +70,7 @@
           {#if app.connection === "lost"}
             Keine Verbindung zum Server. Läuft localize-me noch im Terminal?
           {:else}
-            Gespeichert in <span class="mono">{shortFile}</span> · Änderungen von außen (z. B. git pull) erscheinen sofort
+            Gespeichert in <span class="mono">{shortFile}</span> · {statusNote}
           {/if}
         </span>
       </p>
@@ -85,7 +90,7 @@
           {#if app.connection === "lost"}
             Keine Verbindung zum Server. Läuft localize-me noch im Terminal?
           {:else}
-            Gespeichert in <span class="mono">{shortFile}</span> · Änderungen von außen (z. B. git pull) erscheinen sofort
+            Gespeichert in <span class="mono">{shortFile}</span> · {statusNote}
           {/if}
         </span>
       </p>

@@ -14,6 +14,7 @@ import { addScripts } from "../src/project.js";
 import { isPluralValue } from "../src/plurals.js";
 import { afterExport, checkBranchName, failed } from "../src/versioning.js";
 import { publicConfigFromEnv } from "../src/public-url.js";
+import { DEFAULT_SYNC_INTERVAL } from "../src/sync.js";
 
 const pkg = JSON.parse(fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "package.json"), "utf8"));
 
@@ -38,6 +39,9 @@ Optionen für dev:
                            Umgebung: PUBLIC_TRUSTED_PROXIES; Standard: keinem Proxy vertrauen)
   --file <pfad>            Datei mit den Texten (Standard: localize.json)
   --no-open                Browser nicht automatisch öffnen
+  --sync                   localize.json laufend mit dem Remote abgleichen: ausgecheckter Branch,
+                           Arbeitsbranches und Standard-Branch des Repos
+  --sync-interval <sek>    Sekunden zwischen zwei Abgleichen, schließt --sync ein (Standard: 60, mindestens 10)
 
 Optionen für export:
   --format <native|csv>    native: Dateien fürs App-Projekt, csv: Tabelle mit den Texten
@@ -79,6 +83,8 @@ try {
       "trusted-proxy": { type: "string" },
       file: { type: "string" },
       "no-open": { type: "boolean" },
+      sync: { type: "boolean" },
+      "sync-interval": { type: "string" },
       platform: { type: "string" },
       format: { type: "string" },
       kind: { type: "string" },
@@ -151,10 +157,14 @@ async function dev() {
     trustedProxies: opts["trusted-proxy"] ?? fromEnv.trustedProxies,
   };
 
+  const syncInterval = Number(opts["sync-interval"] ?? DEFAULT_SYNC_INTERVAL);
+  if (!Number.isInteger(syncInterval) || syncInterval < 10) fail(`Ungültiges --sync-interval: ${opts["sync-interval"]} (ganze Sekunden, mindestens 10)`);
+  const sync = opts.sync || opts["sync-interval"] ? { interval: syncInterval } : undefined;
+
   let server, publicConfig;
   try {
     // Ein falscher Wert soll den Dienst nicht stoppen: Die Oberfläche zeigt, was zu tun ist (siehe /api/setup).
-    ({ server, publicConfig } = createServer({ file, versioning, host, allowedHosts, ...publicOptions, lenientPublicConfig: true }));
+    ({ server, publicConfig } = createServer({ file, versioning, sync, host, allowedHosts, ...publicOptions, lenientPublicConfig: true }));
   } catch (e) {
     fail(e.message);
   }
@@ -173,6 +183,7 @@ async function dev() {
   const steps = [versioning.push ? "Commit + Push" : versioning.commit && "Commit", versioning.hook && `„${versioning.hook}“`].filter(Boolean);
   if (steps.length) console.log(`  Nach dem Export: ${steps.join(", danach ")}`);
   for (const [kind, branch] of Object.entries(branches)) console.log(`  Arbeitsbranch ${kind}: ${branch}`);
+  if (sync) console.log(`  Abgleich mit Git: alle ${sync.interval} Sekunden`);
   console.log("");
   if (!opts["no-open"] && !process.env.CI) openBrowser(url);
 

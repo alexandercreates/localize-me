@@ -157,6 +157,7 @@ export class Store {
   constructor(file) {
     this.file = path.resolve(file);
     this.lastWritten = null;
+    this.held = false;
     this.project = this.read();
   }
 
@@ -172,7 +173,7 @@ export class Store {
 
   /** Datei neu einlesen (z. B. nach git pull). Liefert true, wenn sich etwas geändert hat. */
   reload() {
-    if (!fs.existsSync(this.file)) return false;
+    if (this.held || !fs.existsSync(this.file)) return false;
     const raw = fs.readFileSync(this.file, "utf8");
     if (raw === this.lastWritten) return false;
     try {
@@ -185,7 +186,22 @@ export class Store {
     }
   }
 
+  /** Während `fn` gehört die Datei Git: Änderungen bleiben im Speicher und werden danach geschrieben. */
+  async whileHeld(fn) {
+    this.held = true;
+    try {
+      return await fn();
+    } finally {
+      this.held = false;
+      this.save();
+    }
+  }
+
   save() {
+    if (this.held) {
+      this.project = normalize(this.project);
+      return;
+    }
     const out = serialize(this.project);
     fs.mkdirSync(path.dirname(this.file), { recursive: true });
     const tmp = this.file + ".tmp";

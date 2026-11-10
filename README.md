@@ -303,6 +303,8 @@ localize-me dev [optionen]      # bzw. npm run dev -- [optionen]
 | `--trusted-proxy <ips>`  | IP-Adressen/CIDR-Bereiche, deren `X-Forwarded-Host`/`-Proto` gelten     | `$PUBLIC_TRUSTED_PROXIES`, sonst keine |
 | `--file <pfad>`          | Datei mit den Texten                                                    | `localize.json`           |
 | `--no-open`              | Browser nicht automatisch öffnen                                        | –                         |
+| `--sync`                 | `localize.json` laufend mit dem Remote abgleichen, siehe [Abgleich](#laufender-abgleich-mit-dem-repo). | –          |
+| `--sync-interval <sek>`  | Sekunden zwischen zwei Abgleichen, schließt `--sync` ein                | `60`, mindestens `10`     |
 | `--commit`               | Jeder Export erzeugt einen Commit, siehe [Versionieren](#beim-export-versionieren). | –             |
 | `--push`                 | Wie `--commit`, danach `git pull --rebase` und `git push`               | –                         |
 | `--message <text>`       | Commit-Nachricht, wenn in der Oberfläche keine eingegeben wird          | `Texte aktualisiert (localize-me)` |
@@ -439,7 +441,7 @@ git config --global credential.helper '!f() { echo username=localize-me; echo "p
 if [ ! -d /data/repo/.git ]; then
   git clone ${GIT_BRANCH:+-b "$GIT_BRANCH"} "$GIT_REPO" /data/repo
 fi
-exec ./node_modules/.bin/localize-me dev --host 0.0.0.0 --no-open --push \
+exec ./node_modules/.bin/localize-me dev --host 0.0.0.0 --no-open --push --sync \
   --file "/data/repo/${LOCALIZE_FILE:-localize.json}"
 ```
 
@@ -475,7 +477,19 @@ docker run -d --name localize-me --restart unless-stopped -p 4848:4848 -v locali
 | `GIT_BRANCH`    | Branch, auf dem gearbeitet wird; muss im Remote schon existieren  | nein (Standard-Branch des Repos) |
 | `LOCALIZE_FILE` | Pfad der `localize.json` im Repo                                  | nein (`localize.json`) |
 
-Beim ersten Start klont der Container das Repo auf das Volume. Bei späteren Starts nutzt er den vorhandenen Klon weiter. Neue Commits holt er bei jedem Export mit `git pull --rebase`.
+Beim ersten Start klont der Container das Repo auf das Volume. Bei späteren Starts nutzt er den vorhandenen Klon weiter. Neue Texte holt er mit `--sync` jede Minute, siehe [Abgleich](#laufender-abgleich-mit-dem-repo).
+
+#### Laufender Abgleich mit dem Repo
+
+Mit `--sync` bekommt der laufende Server mit, wenn jemand die `localize.json` lokal ändert und pusht. Offene Tabs aktualisieren sich von selbst, ein Export ist dafür nicht nötig.
+
+Abgeglichen werden automatisch der ausgecheckte Branch, die Arbeitsbranches (`--localizable-branch`, `--tracking-branch`) und der Standard-Branch des Repos. Andere Branches, zum Beispiel Feature-Branches, zählen erst, wenn sie gemergt sind.
+
+- **Nur die Texte:** Von fremden Branches wird nur die `localize.json` übernommen, kein App-Code. Mit dem nächsten Export landet der Stand dann auf dem eigenen Branch.
+- **Pro Text zusammengeführt:** Noch nicht exportierte Bearbeitungen aus der Oberfläche bleiben erhalten. Ändern zwei Leute verschiedene Texte, kommen beide Änderungen an.
+- **Bei einem Konflikt** (derselbe Text hier und im Repo unterschiedlich geändert) bleibt der Text aus der Oberfläche stehen. Darüber erscheint ein Hinweis mit beiden Fassungen und der Wahl, welche gelten soll.
+- **Vor jedem Export** läuft zusätzlich ein Abgleich.
+- **Fehler** (kein Remote erreichbar, Token abgelaufen) erscheinen oben in der Oberfläche. localize-me versucht es weiter und bricht nichts ab.
 
 **Hinweise für den Betrieb:**
 
